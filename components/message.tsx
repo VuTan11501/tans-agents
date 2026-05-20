@@ -2,7 +2,7 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Copy, Check, Sparkles, User } from "lucide-react"
+import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
@@ -14,20 +14,89 @@ interface MessageProps {
   content: string
   parts?: any[]
   isStreaming?: boolean
+  isLastAssistant?: boolean
+  onRegenerate?: () => void
+  onEditUser?: (newContent: string) => void
 }
 
-export function MessageBubble({ role, content, parts, isStreaming }: MessageProps) {
+export function MessageBubble({
+  role,
+  content,
+  parts,
+  isStreaming,
+  isLastAssistant,
+  onRegenerate,
+  onEditUser,
+}: MessageProps) {
   const isUser = role === "user"
   const toolInvocations = (parts || []).filter((p) => p.type === "tool-invocation")
-  // Smoothly reveal text even when the provider sends large chunks at once.
-  const displayedContent = useTypewriter(content, !!isStreaming)
+  const displayedContent = useTypewriter(isUser ? "" : content)
+  const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
+
+  // User message: support edit + copy
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(content)
 
   if (isUser) {
+    if (editing) {
+      return (
+        <div className="fade-up flex justify-end">
+          <div className="flex w-full max-w-[85%] flex-col gap-2">
+            <textarea
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="min-h-[72px] w-full resize-none rounded-2xl rounded-tr-md border border-border bg-muted/40 px-4 py-2.5 text-[15px] leading-relaxed outline-none focus:border-foreground/30"
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-3 text-xs"
+                onClick={() => {
+                  setEditing(false)
+                  setDraft(content)
+                }}
+              >
+                <X className="h-3 w-3" /> Hủy
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 px-3 text-xs"
+                disabled={!draft.trim() || draft === content}
+                onClick={() => {
+                  onEditUser?.(draft)
+                  setEditing(false)
+                }}
+              >
+                Gửi lại
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="fade-up flex justify-end">
         <div className="group flex max-w-[85%] items-start gap-3">
-          <div className="rounded-2xl rounded-tr-md bg-muted/60 px-4 py-2.5 text-[15px] leading-relaxed">
-            <p className="whitespace-pre-wrap">{content}</p>
+          <div className="flex flex-col items-end gap-1">
+            <div className="rounded-2xl rounded-tr-md bg-muted/60 px-4 py-2.5 text-[15px] leading-relaxed">
+              <p className="whitespace-pre-wrap">{content}</p>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              {onEditUser && (
+                <ActionIcon
+                  label="Chỉnh sửa"
+                  onClick={() => {
+                    setDraft(content)
+                    setEditing(true)
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </ActionIcon>
+              )}
+              <CopyAction text={content} />
+            </div>
           </div>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
             <User className="h-4 w-4" />
@@ -59,27 +128,87 @@ export function MessageBubble({ role, content, parts, isStreaming }: MessageProp
         )}
 
         {content ? (
-          <div className={cn("prose-chat", isStreaming && "prose-chat-streaming")}>
+          <div className={cn("prose-chat", showCursor && "prose-chat-streaming")}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 pre: (props: any) => <CodeBlock {...props} />,
               }}
             >
-              {isStreaming ? displayedContent : content}
+              {displayedContent || ""}
             </ReactMarkdown>
           </div>
         ) : (
           toolInvocations.length === 0 && <ThinkingDots />
         )}
 
-        {content && !isStreaming && (
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <CopyButton text={content} />
+        {content && !showCursor && (
+          <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+            <CopyAction text={content} />
+            {isLastAssistant && onRegenerate && (
+              <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
+                <RefreshCw className="h-3.5 w-3.5" />
+              </ActionIcon>
+            )}
+            <ActionIcon label="Hữu ích">
+              <ThumbsUp className="h-3.5 w-3.5" />
+            </ActionIcon>
+            <ActionIcon label="Không hữu ích">
+              <ThumbsDown className="h-3.5 w-3.5" />
+            </ActionIcon>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function ActionIcon({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function CopyAction({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => {
+            navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          }}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{copied ? "Đã copy" : "Copy"}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -90,30 +219,6 @@ export function ThinkingDots() {
       <span className="dot-2 h-2 w-2 rounded-full bg-muted-foreground/60" />
       <span className="dot-3 h-2 w-2 rounded-full bg-muted-foreground/60" />
     </div>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-          onClick={() => {
-            navigator.clipboard.writeText(text)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1500)
-          }}
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Đã copy" : "Copy"}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Copy message</TooltipContent>
-    </Tooltip>
   )
 }
 

@@ -42,8 +42,8 @@ export function Chat() {
         provider={provider}
         model={model}
         onChange={handleProviderChange}
-        onClear={() => setMessages([])}
-        canClear={messages.length > 0}
+        onNewChat={() => setMessages([])}
+        canNewChat={messages.length > 0 && !isLoading}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -52,15 +52,35 @@ export function Chat() {
             <EmptyState onPick={(t) => setInput(t)} />
           ) : (
             <div className="space-y-8 py-8">
-              {messages.map((m, i) => (
-                <MessageBubble
-                  key={m.id}
-                  role={m.role}
-                  content={m.content}
-                  parts={m.parts}
-                  isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
-                />
-              ))}
+              {messages.map((m, i) => {
+                const isLastAssistant =
+                  m.role === "assistant" && i === messages.length - 1 && !isLoading
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    role={m.role}
+                    content={m.content}
+                    parts={m.parts}
+                    isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
+                    isLastAssistant={isLastAssistant}
+                    onRegenerate={() => reload()}
+                    onEditUser={
+                      m.role === "user"
+                        ? (newContent) => {
+                            // Truncate to this user msg with edited content, then resend
+                            const truncated = messages.slice(0, i)
+                            setMessages([
+                              ...truncated,
+                              { ...m, content: newContent, parts: undefined as any },
+                            ])
+                            // reload() generates a fresh assistant response for the last user msg
+                            setTimeout(() => reload(), 0)
+                          }
+                        : undefined
+                    }
+                  />
+                )
+              })}
               {error && (
                 <div className="fade-up flex gap-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 text-destructive">

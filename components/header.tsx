@@ -1,5 +1,5 @@
 "use client"
-import { Sparkles, ChevronDown, Trash2, Github, Check } from "lucide-react"
+import { Sparkles, ChevronDown, Github, Check, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -17,11 +17,11 @@ interface HeaderProps {
   provider: ProviderKey
   model: string
   onChange: (p: ProviderKey, m: string) => void
-  onClear: () => void
-  canClear: boolean
+  onNewChat: () => void
+  canNewChat: boolean
 }
 
-export function Header({ provider, model, onChange, onClear, canClear }: HeaderProps) {
+export function Header({ provider, model, onChange, onNewChat, canNewChat }: HeaderProps) {
   const providerLabel = PROVIDERS[provider].label
 
   return (
@@ -80,15 +80,16 @@ export function Header({ provider, model, onChange, onClear, canClear }: HeaderP
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onClear}
-                disabled={!canClear}
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={onNewChat}
+                disabled={!canNewChat}
               >
-                <Trash2 className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">New chat</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Clear chat</TooltipContent>
+            <TooltipContent>Bắt đầu cuộc trò chuyện mới</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
