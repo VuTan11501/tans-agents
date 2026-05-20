@@ -307,5 +307,38 @@ export const generateImage = tool({
   },
 })
 
-export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage }
+export const chartGen = tool({
+  description:
+    "Tạo dữ liệu biểu đồ để client vẽ SVG. Use when the user asks for a chart, graph, visualization, comparison, trend, or data breakdown.",
+  parameters: z.object({
+    type: z.enum(["line", "bar", "pie"]).describe("Chart type: line for trends, bar for comparisons, pie for proportions"),
+    title: z.string().describe("Chart title"),
+    labels: z.array(z.string()).describe("Labels for each data point"),
+    data: z.array(z.number()).describe("Numeric values matching labels by index"),
+  }),
+  execute: async ({ type, title, labels, data }) => ({ type, title, labels, data }),
+})
+
+export const mermaid = tool({
+  description:
+    "Tạo sơ đồ Mermaid từ cú pháp hợp lệ. Use for flowcharts, sequence diagrams, class diagrams, ER diagrams, state diagrams, mindmaps, and architecture diagrams.",
+  parameters: z.object({
+    code: z.string().describe("Valid Mermaid diagram syntax"),
+    title: z.string().optional().describe("Optional diagram title"),
+  }),
+  execute: async ({ code, title }) => ({ code, title }),
+})
+
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid }
 export const TOOL_NAMES = Object.keys(agentTools)
+export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
+  currentTime: "Thời gian",
+  calculator: "Máy tính",
+  webSearch: "Tìm web",
+  weather: "Thời tiết",
+  wikipedia: "Wikipedia",
+  fetchUrl: "Đọc URL",
+  generateImage: "Tạo ảnh",
+  chartGen: "Vẽ biểu đồ",
+  mermaid: "Vẽ sơ đồ",
+}
