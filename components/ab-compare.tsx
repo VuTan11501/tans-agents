@@ -57,7 +57,7 @@ function AbCard({ label, state, onPick }: { label: string; state: AbPaneState; o
       <CardFooter className="border-t border-border/60 p-3">
         {state.done ? (
           <Button type="button" size="sm" className="w-full gap-2" onClick={onPick} disabled={!canPick}>
-            <Check className="h-4 w-4" /> ✓ Chọn câu này
+            <Check className="h-4 w-4" /> Chọn câu này
           </Button>
         ) : (
           <div className="flex w-full items-center justify-center gap-2 text-xs text-muted-foreground">

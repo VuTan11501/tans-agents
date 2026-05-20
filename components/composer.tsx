@@ -488,6 +488,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
               <DropdownMenuItem
                 onClick={() => setMarkdownPreviewOpen((open) => !open)}
                 disabled={disabled}
+                className="hidden md:flex"
               >
                 <Eye className="mr-2 h-4 w-4" />
                 <span className="flex-1">Xem trước Markdown</span>
