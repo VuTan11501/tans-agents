@@ -675,6 +675,7 @@ export function Chat() {
               onChange={setAbMode}
               disabled={!!ragActiveCollectionId}
               notice={ragActiveCollectionId ? "A/B tạm tắt khi RAG đang active." : undefined}
+              userKeys={userKeys}
             />
           </div>
           {hasVisibleMessages && (

@@ -81,6 +81,11 @@ lib/
 - Icons: chỉ dùng `lucide-react` (đừng mix Heroicons/Tabler).
 - Toast: dự án **không** dùng `sonner`. Dùng pattern toast local trong `sidebar.tsx` hoặc `Tooltip` (xem `share-link` impl).
 - Header có nhiều nút icon → đã thêm `flex-1 overflow-hidden` ở container center + truncate trên PersonaPicker. Khi thêm nút mới phải đảm bảo `shrink-0` để không phá layout.
+- **Tái sử dụng UI**: trước khi viết một component picker / dropdown / form mới, **luôn check xem có sẵn component dùng được không** trong `components/`. Quy tắc:
+  1. Nếu UI đã tồn tại ở 1 nơi (ví dụ model picker ở header), khi cần ở chỗ thứ 2 (AB compare, settings...) → **extract thành component shared** (`components/<name>-picker.tsx`) chứ không copy-paste hay viết version mới với `<select>` HTML thuần.
+  2. Component shared phải hỗ trợ props tuỳ biến (showAuto, label, align, triggerClassName, userKeys...) thay vì hard-code cho 1 use-case.
+  3. Khi mở rộng component shared (thêm tính năng như live discovery), cập nhật ở 1 chỗ → cả app hưởng lợi.
+  4. Ví dụ chuẩn: `components/model-picker.tsx` được dùng bởi `header.tsx` (provider+model+Auto) và `ab-toggle.tsx` (chỉ model, có label).
 - Persona label: max `88px` truncate.
 - **Long text & error boxes**: bất kỳ container nào hiển thị message lỗi, URL dài, JSON, hoặc nội dung từ user/API đều phải:
   1. Dùng `<ScrollArea className="max-h-XX">` (`@/components/ui/scroll-area`) thay vì `overflow-auto` thuần khi cần giới hạn chiều cao + có scrollbar đẹp.

@@ -2,8 +2,8 @@
 
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PROVIDERS } from "@/lib/providers"
-import { cn } from "@/lib/utils"
+import { ModelPicker } from "@/components/model-picker"
+import type { UserKeys } from "@/lib/user-keys"
 
 export type AbModeState = {
   enabled: boolean
@@ -16,9 +16,10 @@ interface AbToggleProps {
   onChange: (value: AbModeState) => void
   disabled?: boolean
   notice?: string
+  userKeys?: UserKeys
 }
 
-export function AbToggle({ value, onChange, disabled, notice }: AbToggleProps) {
+export function AbToggle({ value, onChange, disabled, notice, userKeys }: AbToggleProps) {
   const effectiveEnabled = value.enabled && !disabled
 
   return (
@@ -50,44 +51,26 @@ export function AbToggle({ value, onChange, disabled, notice }: AbToggleProps) {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <ModelSelect
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ModelPicker
               label="Mô hình A"
-              value={value.modelA}
-              onChange={(modelA) => onChange({ ...value, modelA })}
+              model={value.modelA}
+              onChange={(_p, modelA) => onChange({ ...value, modelA })}
+              userKeys={userKeys}
+              align="start"
+              triggerClassName="w-full justify-between"
             />
-            <ModelSelect
+            <ModelPicker
               label="Mô hình B"
-              value={value.modelB}
-              onChange={(modelB) => onChange({ ...value, modelB })}
+              model={value.modelB}
+              onChange={(_p, modelB) => onChange({ ...value, modelB })}
+              userKeys={userKeys}
+              align="start"
+              triggerClassName="w-full justify-between"
             />
           </div>
         </div>
       )}
     </div>
-  )
-}
-
-function ModelSelect({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
-      <span>{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          "h-9 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-xs text-foreground shadow-sm outline-none",
-          "focus:ring-2 focus:ring-ring"
-        )}
-      >
-        {Object.entries(PROVIDERS).map(([key, provider]) => (
-          <optgroup key={key} label={provider.label}>
-            {provider.models.map((model) => (
-              <option key={model} value={model}>{model}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-    </label>
   )
 }

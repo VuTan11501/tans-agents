@@ -3,7 +3,6 @@ import { useState } from "react"
 import {
   Sparkles,
   Bookmark,
-  ChevronDown,
   Check,
   Plus,
   Menu,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
+import { ModelPicker } from "@/components/model-picker"
 import { CollectionsDialog } from "@/components/collections-dialog"
 import { SnippetsDialog } from "@/components/snippets-dialog"
 import { ThemeCustomizer } from "@/components/theme-customizer"
@@ -32,7 +32,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ApiKeysDialog } from "@/components/api-keys-dialog"
 import { PERSONAS, getPersona, type PersonaId } from "@/lib/personas"
-import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import { type ProviderKey } from "@/lib/providers"
 import { cn } from "@/lib/utils"
 import { hasAnyUserKey, type UserKeyProvider, type UserKeys } from "@/lib/user-keys"
 
@@ -73,34 +73,10 @@ export function Header({
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [snippetsOpen, setSnippetsOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
-  const [discoveredGoogleModels, setDiscoveredGoogleModels] = useState<string[] | null>(null)
-  const [discoveringGoogle, setDiscoveringGoogle] = useState(false)
-  const [discoverError, setDiscoverError] = useState<string | null>(null)
-  const providerLabel = PROVIDERS[provider].label
   const isAutoModel = model === "auto"
   const hasKeys = hasAnyUserKey(userKeys)
   const currentPersona = getPersona(persona)
   const toggleVoiceMode = () => window.dispatchEvent(new CustomEvent("tans:voice-toggle"))
-
-  async function discoverGoogleModels() {
-    setDiscoveringGoogle(true)
-    setDiscoverError(null)
-    try {
-      const res = await fetch("/api/google/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userKey: userKeys.gemini ?? "" }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
-      const ids = (data.models as Array<{ id: string }>).map((m) => m.id)
-      setDiscoveredGoogleModels(ids)
-    } catch (err) {
-      setDiscoverError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setDiscoveringGoogle(false)
-    }
-  }
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/70 backdrop-blur-xl">
@@ -131,76 +107,18 @@ export function Header({
 
         {/* Center: Model picker grows to fill space */}
         <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 min-w-0 max-w-full shrink gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
-              >
-                {!isAutoModel && <span className="hidden text-muted-foreground lg:inline">{providerLabel}</span>}
-                {/* Show persona emoji inside model picker on mobile (saves a button) */}
-                <span className="sm:hidden" aria-hidden>{isAutoModel ? "🤖" : currentPersona.emoji}</span>
-                {isAutoModel ? (
-                  <span className="hidden truncate font-mono sm:inline">🤖 Auto</span>
-                ) : (
-                  <span className="truncate font-mono">{model}</span>
-                )}
-                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="w-72">
-              <DropdownMenuItem
-                onClick={() => onChange(provider, "auto")}
-                className={cn("text-xs", isAutoModel && "bg-accent")}
-              >
-                <span className="mr-2 text-base">🤖</span>
-                <span className="flex-1">Auto (chọn theo prompt)</span>
-                {isAutoModel && <Check className="h-3 w-3" />}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {Object.entries(PROVIDERS).map(([pKey, p]) => {
-                const isGoogle = pKey === "google"
-                const modelList: readonly string[] = isGoogle && discoveredGoogleModels && discoveredGoogleModels.length > 0
-                  ? Array.from(new Set([...p.models, ...discoveredGoogleModels]))
-                  : p.models
-                return (
-                <div key={pKey}>
-                  <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>{p.label}</span>
-                    {pKey === provider && <Check className="h-3 w-3" />}
-                  </DropdownMenuLabel>
-                  {modelList.map((m) => {
-                    const selected = pKey === provider && m === model
-                    return (
-                      <DropdownMenuItem
-                        key={m}
-                        onClick={() => onChange(pKey as ProviderKey, m)}
-                        className={cn("font-mono text-xs", selected && "bg-accent")}
-                      >
-                        <span className="flex-1">{m}</span>
-                        {selected && <Check className="h-3 w-3" />}
-                      </DropdownMenuItem>
-                    )
-                  })}
-                  {isGoogle && (
-                    <DropdownMenuItem
-                      onSelect={(e) => { e.preventDefault(); discoverGoogleModels() }}
-                      className="text-[11px] text-muted-foreground"
-                      disabled={discoveringGoogle}
-                    >
-                      {discoveringGoogle ? "Đang quét..." : discoveredGoogleModels ? `↻ Quét lại (${discoveredGoogleModels.length} model)` : "↻ Quét live model có sẵn với key của bạn"}
-                    </DropdownMenuItem>
-                  )}
-                  {isGoogle && discoverError && (
-                    <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">{discoverError}</div>
-                  )}
-                  <DropdownMenuSeparator />
-                </div>
-                )
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ModelPicker
+            provider={provider}
+            model={model}
+            onChange={onChange}
+            showAuto
+            userKeys={userKeys}
+            triggerPrefix={
+              <span className="sm:hidden" aria-hidden>
+                {isAutoModel ? "🤖" : currentPersona.emoji}
+              </span>
+            }
+          />
 
           {/* Persona picker — hidden on mobile (emoji shown inside model picker; full picker in overflow menu) */}
           <div className="hidden sm:block">
