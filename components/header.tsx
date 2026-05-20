@@ -217,19 +217,19 @@ export function Header({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Persona</DropdownMenuLabel>
+                <DropdownMenuLabel className="sm:hidden">Persona</DropdownMenuLabel>
                 {PERSONAS.map((p) => (
                   <DropdownMenuItem
                     key={p.id}
                     onClick={() => onPersonaChange(p.id)}
-                    className={cn("text-sm", p.id === persona && "bg-accent")}
+                    className={cn("text-sm sm:hidden", p.id === persona && "bg-accent")}
                   >
                     <span className="mr-2 text-base">{p.emoji}</span>
                     <span className="flex-1">{p.label}</span>
                     {p.id === persona && <Check className="h-3 w-3" />}
                   </DropdownMenuItem>
                 ))}
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="sm:hidden" />
                 <DropdownMenuItem onClick={onOpenMemory}>
                   <Brain className="mr-2 h-4 w-4" /> Bộ nhớ
                 </DropdownMenuItem>
