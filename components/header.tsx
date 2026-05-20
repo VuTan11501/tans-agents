@@ -169,8 +169,8 @@ export function Header({
 
         {/* Right: action icons (visible on ≥md), overflow menu (<md), new chat */}
         <div className="relative flex shrink-0 items-center gap-1">
-          {/* Desktop-only inline icon buttons */}
-          <div className="hidden items-center gap-1 md:flex">
+          {/* Desktop-only inline icon buttons (hidden — use overflow menu on all sizes) */}
+          <div className="hidden">
             <IconBtn label="Bộ nhớ" onClick={onOpenMemory}>
               <Brain className="h-3.5 w-3.5" />
             </IconBtn>
@@ -200,8 +200,8 @@ export function Header({
             </IconBtn>
           </div>
 
-          {/* Mobile overflow menu */}
-          <div className="md:hidden">
+          {/* Overflow menu (all sizes) */}
+          <div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
