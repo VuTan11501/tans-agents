@@ -4,6 +4,7 @@ import { createGroq } from "@ai-sdk/groq"
 import { createOpenAI } from "@ai-sdk/openai"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import { routeModel } from "@/lib/router"
 
 export const runtime = "edge"
 export const maxDuration = 30
@@ -12,6 +13,12 @@ const DEFAULT_SYSTEM_PROMPT =
   "Bạn là Tan's Agent - AI assistant hữu ích, trả lời súc tích bằng tiếng Việt (trừ khi user dùng ngôn ngữ khác). " +
   "Khi cần thông tin thực tế hãy dùng tool webSearch. Khi cần tính toán dùng calculator. Khi hỏi giờ dùng currentTime. " +
   "Format câu trả lời bằng Markdown khi hữu ích (list, code block, bold)."
+
+function providerForModel(modelId: string): ProviderKey | undefined {
+  return (Object.entries(PROVIDERS) as Array<[ProviderKey, (typeof PROVIDERS)[ProviderKey]]>).find(([, config]) =>
+    (config.models as readonly string[]).includes(modelId)
+  )?.[0]
+}
 
 function getModel(provider: ProviderKey, modelId: string) {
   if (provider === "google") {
@@ -42,9 +49,11 @@ function getModel(provider: ProviderKey, modelId: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { messages, provider, model, enabledTools, personaSystemPrompt } = body ?? {}
-    const p = (provider || "google") as ProviderKey
-    const m = model || PROVIDERS[p].default
+    const { messages, provider, model, enabledTools, personaSystemPrompt, auto } = body ?? {}
+    const autoRoute = model === "auto" || (!model && auto === true) ? routeModel(messages) : undefined
+    const requestedProvider = (provider || "google") as ProviderKey
+    const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
+    const m = autoRoute?.modelId || model || PROVIDERS[p].default
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(
           Object.entries(agentTools).filter(([name]) => enabledTools.includes(name))
@@ -152,6 +161,12 @@ export async function POST(req: Request) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        ...(autoRoute
+          ? {
+              "X-Auto-Model": autoRoute.modelId,
+              "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
+            }
+          : {}),
       },
     })
   } catch (e: any) {

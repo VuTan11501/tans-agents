@@ -4,6 +4,7 @@ import { createGroq } from "@ai-sdk/groq"
 import { createOpenAI } from "@ai-sdk/openai"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import { routeModel } from "@/lib/router"
 import type { UserKeys } from "@/lib/user-keys"
 
 export const runtime = "edge"
@@ -19,6 +20,12 @@ function getUserApiKey(provider: ProviderKey, userKeys?: UserKeys) {
 
   const key = provider === "google" ? userKeys.gemini : userKeys[provider]
   return typeof key === "string" && key.trim() ? key.trim() : undefined
+}
+
+function providerForModel(modelId: string): ProviderKey | undefined {
+  return (Object.entries(PROVIDERS) as Array<[ProviderKey, (typeof PROVIDERS)[ProviderKey]]>).find(([, config]) =>
+    (config.models as readonly string[]).includes(modelId)
+  )?.[0]
 }
 
 function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
@@ -44,9 +51,11 @@ function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
 
 export async function POST(req: Request) {
   try {
-    const { messages, provider, model, enabledTools, userKeys } = await req.json()
-    const p = (provider || "google") as ProviderKey
-    const m = model || PROVIDERS[p].default
+    const { messages, provider, model, enabledTools, userKeys, auto } = await req.json()
+    const autoRoute = model === "auto" || (!model && auto === true) ? routeModel(messages) : undefined
+    const requestedProvider = (provider || "google") as ProviderKey
+    const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
+    const m = autoRoute?.modelId || model || PROVIDERS[p].default
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
       : agentTools
@@ -65,6 +74,12 @@ export async function POST(req: Request) {
       },
     })
     return result.toDataStreamResponse({
+      headers: autoRoute
+        ? {
+            "X-Auto-Model": autoRoute.modelId,
+            "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
+          }
+        : undefined,
       sendUsage: true,
       sendReasoning: false,
       // Forward the real error message into the data stream so the client UI
