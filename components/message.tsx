@@ -3,7 +3,7 @@ import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, use
 import type { ReactElement, ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Check, Copy, ExternalLink, Heart, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, Volume2, VolumeX, X } from "lucide-react"
+import { Check, Copy, ExternalLink, Heart, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
@@ -11,7 +11,6 @@ import { MermaidRenderer } from "@/components/mermaid-renderer"
 import { DiffRenderer } from "@/components/diff-renderer"
 import { ChartRenderer, type ChartData } from "@/components/chart-renderer"
 import { useTypewriter } from "@/hooks/use-typewriter"
-import { useSpeechSynthesis } from "@/hooks/use-voice"
 import { trackReaction } from "@/lib/analytics"
 import { cn } from "@/lib/utils"
 
@@ -73,7 +72,6 @@ export function MessageBubble({
   const displayedContent = useTypewriter(isUser ? "" : content)
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
-  const voice = useSpeechSynthesis()
   const assistantMessageRef = useRef<HTMLDivElement>(null)
   const [quoteButton, setQuoteButton] = useState<QuoteButtonState | null>(null)
 
@@ -264,14 +262,6 @@ export function MessageBubble({
           <div className="space-y-1.5">
             <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
               <CopyAction text={content} />
-              {voice.supported && (
-                <ActionIcon
-                  label={voice.speaking ? "Dừng đọc" : "Đọc câu trả lời"}
-                  onClick={() => voice.speaking ? voice.cancel() : voice.speak(content, { lang: "vi-VN", rate: 1 })}
-                >
-                  {voice.speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-                </ActionIcon>
-              )}
               {isLastAssistant && onRegenerate && (
                 <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
                   <RefreshCw className="h-3.5 w-3.5" />

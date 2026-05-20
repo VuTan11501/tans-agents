@@ -108,14 +108,14 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-[55] bg-transparent"
+        className="fixed inset-0 z-[90]"
         onClick={() => onOpenChange(false)}
         aria-hidden
       />
       <div
         role="dialog"
         aria-modal="false"
-        className="fixed right-2 top-16 z-[60] w-[min(20rem,calc(100vw-1rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2 duration-200 ease-out sm:right-4 sm:top-14 sm:w-72"
+        className="fixed right-2 top-16 z-[91] w-[min(20rem,calc(100vw-1rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2 duration-200 ease-out sm:right-4 sm:top-14 sm:w-72"
         data-state="open"
         onClick={(event) => event.stopPropagation()}
       >
@@ -209,9 +209,6 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
           </Button>
         </div>
       </label>
-      <button className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:underline" type="button" onClick={() => onOpenChange(false)}>
-        Đóng
-      </button>
       </div>
     </>
   )
