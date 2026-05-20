@@ -9,11 +9,13 @@ import { Composer } from "@/components/composer"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 
 export function Chat() {
-  const [provider, setProvider] = useState<ProviderKey>("google")
-  const [model, setModel] = useState<string>(PROVIDERS.google.default)
+  // Default to Groq: free tier is far more generous (30 req/min) and it
+  // streams token-by-token, giving the best ChatGPT-like feel out of the box.
+  const [provider, setProvider] = useState<ProviderKey>("groq")
+  const [model, setModel] = useState<string>(PROVIDERS.groq.default)
   const scrollEndRef = useRef<HTMLDivElement>(null)
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, stop } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, stop, error, reload } = useChat({
     api: "/api/chat",
     body: { provider, model },
   })
@@ -59,6 +61,25 @@ export function Chat() {
                   isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
                 />
               ))}
+              {error && (
+                <div className="fade-up flex gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 text-destructive">
+                    !
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2 pt-1">
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                      <div className="font-medium">Có lỗi khi gọi AI:</div>
+                      <div className="mt-1 whitespace-pre-wrap text-xs opacity-90">{error.message}</div>
+                    </div>
+                    <button
+                      onClick={() => reload()}
+                      className="rounded-md border border-border bg-background px-3 py-1 text-xs hover:bg-muted"
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                </div>
+              )}
               <div ref={scrollEndRef} className="h-1" />
             </div>
           )}

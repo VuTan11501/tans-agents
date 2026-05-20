@@ -6,6 +6,7 @@ import { Copy, Check, Sparkles, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
+import { useTypewriter } from "@/hooks/use-typewriter"
 import { cn } from "@/lib/utils"
 
 interface MessageProps {
@@ -18,6 +19,8 @@ interface MessageProps {
 export function MessageBubble({ role, content, parts, isStreaming }: MessageProps) {
   const isUser = role === "user"
   const toolInvocations = (parts || []).filter((p) => p.type === "tool-invocation")
+  // Smoothly reveal text even when the provider sends large chunks at once.
+  const displayedContent = useTypewriter(content, !!isStreaming)
 
   if (isUser) {
     return (
@@ -63,7 +66,7 @@ export function MessageBubble({ role, content, parts, isStreaming }: MessageProp
                 pre: (props: any) => <CodeBlock {...props} />,
               }}
             >
-              {content}
+              {isStreaming ? displayedContent : content}
             </ReactMarkdown>
           </div>
         ) : (
