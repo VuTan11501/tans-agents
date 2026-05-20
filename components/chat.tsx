@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
+import { ReadingMode } from "@/components/reading-mode"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
 import { ChatSearch } from "@/components/chat-search"
 import { MemoryDialog } from "@/components/memory-dialog"
@@ -383,39 +384,43 @@ export function Chat() {
     >
       <div className="bg-dot-grid pointer-events-none fixed inset-0 -z-10 opacity-[0.15]" />
 
-      <Sidebar
-        open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
-        sessions={history.sessions}
-        currentId={sessionId}
-        onSelect={handleSelectSession}
-        onNewChat={handleNewChat}
-        onDelete={handleDeleteSession}
-        onRename={history.rename}
-        onDuplicate={(id) => {
-          const newId = history.duplicate(id)
-          if (newId) handleSelectSession(newId)
-        }}
-        onClearAll={handleClearAll}
-        trigger={<span className="hidden" />}
-      />
+      <div data-sidebar>
+        <Sidebar
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          sessions={history.sessions}
+          currentId={sessionId}
+          onSelect={handleSelectSession}
+          onNewChat={handleNewChat}
+          onDelete={handleDeleteSession}
+          onRename={history.rename}
+          onDuplicate={(id) => {
+            const newId = history.duplicate(id)
+            if (newId) handleSelectSession(newId)
+          }}
+          onClearAll={handleClearAll}
+          trigger={<span className="hidden" />}
+        />
+      </div>
 
-      <Header
-        provider={provider}
-        model={model}
-        persona={persona}
-        onChange={handleProviderChange}
-        onPersonaChange={setPersona}
-        onNewChat={handleNewChat}
-        canNewChat={hasVisibleMessages && !isLoading}
-        onOpenMenu={() => setSidebarOpen(true)}
-        onOpenMemory={() => setMemoryOpen(true)}
-        onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
-        onOpenErrorLog={() => setErrorLogOpen(true)}
-        userKeys={userKeys}
-        setUserKey={setUserKey}
-        clearUserKeys={clearUserKeys}
-      />
+      <div data-header-chrome>
+        <Header
+          provider={provider}
+          model={model}
+          persona={persona}
+          onChange={handleProviderChange}
+          onPersonaChange={setPersona}
+          onNewChat={handleNewChat}
+          canNewChat={hasVisibleMessages && !isLoading}
+          onOpenMenu={() => setSidebarOpen(true)}
+          onOpenMemory={() => setMemoryOpen(true)}
+          onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
+          onOpenErrorLog={() => setErrorLogOpen(true)}
+          userKeys={userKeys}
+          setUserKey={setUserKey}
+          clearUserKeys={clearUserKeys}
+        />
+      </div>
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4">
@@ -494,13 +499,14 @@ export function Chat() {
             files={attachedFiles}
             onFilesChange={setAttachedFiles}
           />
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+          <p className="mt-2 text-center text-[11px] text-muted-foreground" data-composer-extra>
             AI có thể tạo thông tin không chính xác · Powered by{" "}
             <span className="font-mono">{model}</span>
           </p>
         </div>
       </div>
 
+      <ReadingMode />
       <ChatSearch open={searchOpen} onOpenChange={setSearchOpen} refreshKey={searchRefreshKey} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <MemoryDialog

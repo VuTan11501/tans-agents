@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Check, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ACCENT_PRESETS, clearAccent, getStoredAccent, saveAccent } from "@/lib/theme"
+import { ACCENT_PRESETS, applyStoredDensity, clearAccent, getStoredAccent, getStoredDensity, saveAccent, saveDensity, type Density } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 interface ThemeCustomizerProps {
@@ -12,15 +12,28 @@ interface ThemeCustomizerProps {
   onOpenChange: (open: boolean) => void
 }
 
+const DENSITY_OPTIONS: Array<{ value: Density; label: string }> = [
+  { value: "compact", label: "Compact" },
+  { value: "cozy", label: "Cozy" },
+  { value: "comfortable", label: "Comfortable" },
+]
+
 export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [custom, setCustom] = useState("262 83% 58%")
+  const [density, setDensity] = useState<Density>("cozy")
   const isValid = /^\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s*$/.test(custom)
+
+  useEffect(() => {
+    applyStoredDensity()
+    setDensity(getStoredDensity())
+  }, [])
 
   useEffect(() => {
     if (!open) return
     const stored = getStoredAccent()
     setSelected(stored)
+    setDensity(getStoredDensity())
     if (stored) setCustom(stored)
   }, [open])
 
@@ -32,6 +45,11 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
     setCustom(hsl)
   }
 
+  function applyInterfaceDensity(value: Density) {
+    if (!saveDensity(value)) return
+    setDensity(value)
+  }
+
   function reset() {
     clearAccent()
     setSelected(null)
@@ -41,7 +59,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
     <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">🎨 Màu nhấn</h3>
+          <h3 className="text-sm font-semibold">Màu nhấn</h3>
           <p className="mt-1 text-xs text-muted-foreground">Chọn màu cho nút chính, viền focus và accent.</p>
         </div>
         <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={reset}>
@@ -69,6 +87,30 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
             </button>
           )
         })}
+      </div>
+
+      <div className="mt-5 space-y-2" role="radiogroup" aria-label="Mật độ giao diện">
+        <div className="text-xs font-medium">Mật độ giao diện</div>
+        <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1">
+          {DENSITY_OPTIONS.map((option) => {
+            const active = density === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => applyInterfaceDensity(option.value)}
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active && "bg-background text-foreground shadow-sm"
+                )}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <label className="mt-4 block space-y-2">

@@ -102,12 +102,12 @@
   50%, 95% { opacity: 0.2; }
   100% { opacity: 1; }
 }
-/* The streaming "▍" glyph appended to the last block in the assistant's
+/* The streaming "â–" glyph appended to the last block in the assistant's
    markdown content. We can't easily wrap the trailing character via
    ReactMarkdown, so we use ::after on the last rendered child of the
    prose container, which puts the cursor inline at the end of the text. */
 .prose-chat-streaming > *:last-child::after {
-  content: "▍";
+  content: "â–";
   display: inline-block;
   margin-left: 2px;
   color: hsl(var(--foreground) / 0.85);
@@ -123,7 +123,7 @@
 }
 .fade-up { animation: fade-up 0.3s ease-out; }
 
-/* Chat markdown styling — Claude-style readable prose */
+/* Chat markdown styling â€” Claude-style readable prose */
 .prose-chat {
   font-size: 0.95rem;
   line-height: 1.65;
@@ -177,3 +177,50 @@
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
 *::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+/* Density polish */
+[data-density="compact"] .density-row {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  gap: 0.5rem;
+}
+[data-density="comfortable"] .density-row {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  gap: 1rem;
+}
+[data-density="compact"] [data-message-id],
+[data-density="compact"] [data-chat-messages] > * {
+  padding-block: 0.25rem;
+}
+[data-density="compact"] [data-chat-messages] > * + * {
+  margin-top: 1rem;
+}
+[data-density="comfortable"] [data-message-id],
+[data-density="comfortable"] [data-chat-messages] > * {
+  padding-block: 1rem;
+}
+[data-density="comfortable"] [data-chat-messages] > * + * {
+  margin-top: 2.5rem;
+}
+
+/* Reading mode */
+[data-reading="on"] [data-sidebar],
+[data-reading="on"] aside {
+  display: none !important;
+}
+[data-reading="on"] [data-header-chrome],
+[data-reading="on"] header {
+  display: none !important;
+}
+[data-reading="on"] main {
+  max-width: 100%;
+}
+[data-reading="on"] [data-chat-messages] {
+  max-width: 65ch;
+  margin: 0 auto;
+  font-size: 1.05rem;
+}
+[data-reading="on"] [data-composer-extra] {
+  display: none !important;
+}

@@ -1,6 +1,9 @@
 "use client"
 
 export const ACCENT_STORAGE_KEY = "tans-agents:accent-color"
+export const DENSITY_STORAGE_KEY = "tans:density"
+
+export type Density = "compact" | "cozy" | "comfortable"
 
 export interface AccentPreset {
   name: string
@@ -22,6 +25,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 ]
 
 const HSL_PATTERN = /^\s*(\d+(?:\.\d+)?)\s+((?:\d+(?:\.\d+)?)%)\s+((?:\d+(?:\.\d+)?)%)\s*$/
+const DENSITIES: Density[] = ["compact", "cozy", "comfortable"]
 
 export function normalizeHsl(value: string): string | null {
   const match = value.match(HSL_PATTERN)
@@ -30,9 +34,18 @@ export function normalizeHsl(value: string): string | null {
   return `${Math.round(hue)} ${match[2]} ${match[3]}`
 }
 
+export function normalizeDensity(value: unknown): Density {
+  return typeof value === "string" && DENSITIES.includes(value as Density) ? (value as Density) : "cozy"
+}
+
 export function getStoredAccent(): string | null {
   if (typeof window === "undefined") return null
   return normalizeHsl(window.localStorage.getItem(ACCENT_STORAGE_KEY) ?? "")
+}
+
+export function getStoredDensity(): Density {
+  if (typeof window === "undefined") return "cozy"
+  return normalizeDensity(window.localStorage.getItem(DENSITY_STORAGE_KEY))
 }
 
 export function saveAccent(hsl: string) {
@@ -40,6 +53,14 @@ export function saveAccent(hsl: string) {
   if (!normalized || typeof window === "undefined") return false
   window.localStorage.setItem(ACCENT_STORAGE_KEY, normalized)
   applyAccent(normalized)
+  return true
+}
+
+export function saveDensity(density: Density) {
+  if (typeof window === "undefined") return false
+  const normalized = normalizeDensity(density)
+  window.localStorage.setItem(DENSITY_STORAGE_KEY, normalized)
+  applyDensity(normalized)
   return true
 }
 
@@ -57,6 +78,10 @@ export function applyStoredAccent() {
   if (hsl) applyAccent(hsl)
 }
 
+export function applyStoredDensity() {
+  applyDensity(getStoredDensity())
+}
+
 export function applyAccent(hsl: string) {
   if (typeof window === "undefined") return
   const normalized = normalizeHsl(hsl)
@@ -66,6 +91,11 @@ export function applyAccent(hsl: string) {
   root.style.setProperty("--primary", normalized)
   root.style.setProperty("--ring", normalized)
   root.style.setProperty("--accent", softenAccent(normalized, root.classList.contains("dark")))
+}
+
+export function applyDensity(density: Density) {
+  if (typeof window === "undefined") return
+  window.document.documentElement.dataset.density = normalizeDensity(density)
 }
 
 function softenAccent(hsl: string, isDark: boolean): string {
