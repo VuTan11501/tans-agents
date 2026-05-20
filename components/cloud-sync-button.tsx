@@ -23,6 +23,13 @@ function formatRelative(ts: number | null): string {
 }
 
 export function CloudSyncButton() {
+  // Tắt hoàn toàn nếu cloud-sync chưa được cấu hình (env NEXT_PUBLIC_ENABLE_CLOUD_SYNC).
+  // useSession sẽ throw nếu không có SessionProvider phía trên, nên gate ngay tại đây.
+  if (process.env.NEXT_PUBLIC_ENABLE_CLOUD_SYNC !== "1") return null
+  return <CloudSyncButtonInner />
+}
+
+function CloudSyncButtonInner() {
   const { data: session, status: authStatus } = useSession()
   const { status, lastSyncAt, error, pullAll, pushAll } = useCloudSync()
   const [open, setOpen] = useState(false)
