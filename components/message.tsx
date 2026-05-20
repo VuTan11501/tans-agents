@@ -1,5 +1,5 @@
 "use client"
-import { Children, cloneElement, isValidElement, useEffect, useMemo, useState } from "react"
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactElement, ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -35,6 +35,12 @@ type CitationSource = {
 
 type Reaction = "up" | "down" | "heart" | null
 
+type QuoteButtonState = {
+  text: string
+  top: number
+  left: number
+}
+
 const REACTIONS_KEY = "tans:reactions"
 const SANDBOX_LANGUAGES = new Set(["js", "jsx", "javascript", "ts", "tsx", "typescript", "html", "css", "py", "python"])
 
@@ -67,6 +73,51 @@ export function MessageBubble({
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
   const voice = useSpeechSynthesis()
+  const assistantMessageRef = useRef<HTMLDivElement>(null)
+  const [quoteButton, setQuoteButton] = useState<QuoteButtonState | null>(null)
+
+  useEffect(() => {
+    if (isUser) return
+    function handleSelectionChange() {
+      const selection = window.getSelection()
+      const container = assistantMessageRef.current
+      if (!selection || selection.isCollapsed || !container || !isSelectionInside(selection, container)) {
+        setQuoteButton(null)
+      }
+    }
+
+    document.addEventListener("selectionchange", handleSelectionChange)
+    return () => document.removeEventListener("selectionchange", handleSelectionChange)
+  }, [isUser])
+
+  function handleAssistantMouseUp() {
+    const selection = window.getSelection()
+    const container = assistantMessageRef.current
+    const selectedText = selection?.toString().trim()
+    if (!selection || !container || !selectedText || !isSelectionInside(selection, container) || selection.rangeCount === 0) {
+      setQuoteButton(null)
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const rect = range.getClientRects()[0] ?? range.getBoundingClientRect()
+    if (!rect || (rect.width === 0 && rect.height === 0)) {
+      setQuoteButton(null)
+      return
+    }
+
+    const aboveSelection = rect.top > 48
+    const left = Math.min(Math.max(rect.left + rect.width / 2, 80), window.innerWidth - 80)
+    const top = aboveSelection ? rect.top - 42 : rect.bottom + 8
+    setQuoteButton({ text: selectedText, left, top })
+  }
+
+  function dispatchQuote() {
+    if (!quoteButton) return
+    window.dispatchEvent(new CustomEvent("tans:quote", { detail: { text: quoteButton.text, sourceMessageId: messageId } }))
+    window.getSelection()?.removeAllRanges()
+    setQuoteButton(null)
+  }
 
   // User message: support edit + copy
   const [editing, setEditing] = useState(false)
@@ -147,7 +198,25 @@ export function MessageBubble({
         <Sparkles className="h-4 w-4 text-foreground" />
       </div>
 
-      <div className="min-w-0 flex-1 space-y-3 pt-1">
+      <div ref={assistantMessageRef} onMouseUp={handleAssistantMouseUp} className="min-w-0 flex-1 space-y-3 pt-1">
+        {quoteButton && (
+          <div
+            className="fixed z-50 -translate-x-1/2"
+            style={{ top: quoteButton.top, left: quoteButton.left }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full border border-border/70 bg-background/95 px-3 text-xs text-foreground shadow-lg backdrop-blur hover:bg-muted"
+              onClick={dispatchQuote}
+            >
+              💬 Trích & hỏi
+            </Button>
+          </div>
+        )}
+
         {toolInvocations.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {toolInvocations.map((p, i) => (
@@ -502,6 +571,11 @@ function isChartData(value: any): value is ChartData {
     Array.isArray(value.labels) &&
     Array.isArray(value.data)
   )
+}
+
+function isSelectionInside(selection: Selection, container: HTMLElement) {
+  const { anchorNode, focusNode } = selection
+  return !!anchorNode && !!focusNode && container.contains(anchorNode) && container.contains(focusNode)
 }
 
 function linkCitationMarkers(children: ReactNode, sources: CitationSource[]): ReactNode {

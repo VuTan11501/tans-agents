@@ -9,6 +9,11 @@ import { countTokens } from "@/lib/tokens"
 import { useSpeechRecognition } from "@/hooks/use-voice"
 import { cn } from "@/lib/utils"
 
+type QuoteEventDetail = {
+  text?: string
+  sourceMessageId?: string
+}
+
 interface ComposerProps {
   value: string
   onChange: (v: string) => void
@@ -52,6 +57,11 @@ function isAcceptedFile(file: File) {
   return file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/")
 }
 
+function formatQuotedMessage(quote: string, input: string) {
+  const quotedMarkdown = `> ${quote.trim().split("\n").join("\n> ")}`
+  return [quotedMarkdown, input.trim()].filter(Boolean).join("\n\n")
+}
+
 export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, messages = [], model, files = [], onFilesChange }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -62,6 +72,8 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [isDragging, setIsDragging] = useState(false)
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const [isNarrow, setIsNarrow] = useState(false)
+  const [quotedText, setQuotedText] = useState<string | null>(null)
+  const [pendingQuotedSubmit, setPendingQuotedSubmit] = useState<string | null>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
     const mq = window.matchMedia("(max-width: 640px)")
@@ -73,15 +85,16 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const slash = matchSlash(value)
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
-  const canSubmit = (!!value.trim() || files.length > 0) && !disabled
+  const composedValue = quotedText ? formatQuotedMessage(quotedText, value) : value
+  const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled
   const contextUsage = useMemo(() => {
     const used = messages.reduce((sum, message) => {
       return sum + countTokens(typeof message.content === "string" ? message.content : "")
-    }, countTokens(value))
+    }, countTokens(composedValue))
     const limit = (model && CONTEXT_LIMITS[model]) || DEFAULT_CONTEXT_LIMIT
     const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
     return { used, limit, pct, barPct: Math.min(100, Math.max(0, pct)) }
-  }, [messages, model, value])
+  }, [messages, model, composedValue])
   const contextBarClass = contextUsage.pct < 50 ? "bg-primary" : contextUsage.pct <= 80 ? "bg-amber-500" : "bg-red-500"
 
   // Auto-grow
@@ -96,6 +109,30 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     if (!showSlash) return
     if (slashIndex >= slashMatches.length) setSlashIndex(0)
   }, [showSlash, slashMatches.length, slashIndex])
+
+  useEffect(() => {
+    function handleQuote(event: Event) {
+      const detail = (event as CustomEvent<QuoteEventDetail>).detail
+      const text = detail?.text?.trim()
+      if (!text) return
+      setQuotedText(text)
+      setSlashOpen(false)
+      window.requestAnimationFrame(() => {
+        ref.current?.focus()
+        const end = ref.current?.value.length ?? 0
+        ref.current?.setSelectionRange(end, end)
+      })
+    }
+
+    window.addEventListener("tans:quote", handleQuote)
+    return () => window.removeEventListener("tans:quote", handleQuote)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingQuotedSubmit || value !== pendingQuotedSubmit) return
+    setPendingQuotedSubmit(null)
+    onSubmit({ preventDefault() {} } as FormEvent)
+  }, [onSubmit, pendingQuotedSubmit, value])
 
   useEffect(() => {
     const urls: Record<string, string> = {}
@@ -179,6 +216,22 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     addFiles(Array.from(e.dataTransfer.files ?? []))
   }
 
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!quotedText) {
+      onSubmit(e)
+      return
+    }
+
+    const finalMessage = formatQuotedMessage(quotedText, value)
+    if (!finalMessage.trim() && files.length === 0) return
+
+    setPendingQuotedSubmit(finalMessage)
+    setQuotedText(null)
+    setSlashOpen(false)
+    onChange(finalMessage)
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (showSlash) {
       if (e.key === "ArrowDown") {
@@ -206,13 +259,13 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       if (canSubmit && !isStreaming) {
-        onSubmit(e as unknown as FormEvent)
+        handleSubmit(e as unknown as FormEvent)
       }
     }
   }
 
   return (
-    <form onSubmit={onSubmit} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className="relative">
+    <form onSubmit={handleSubmit} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className="relative">
       {showSlash && (
         <div className="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
           {slashMatches.map((cmd, index) => (
@@ -263,6 +316,20 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           </span>
         </div>
 
+        {quotedText && (
+          <div className="mb-2 flex items-start gap-2 rounded-xl border border-l-4 border-border border-l-violet-500 bg-muted/45 px-3 py-2 pr-2 text-sm text-muted-foreground">
+            <div className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-relaxed">{quotedText}</div>
+            <button
+              type="button"
+              onClick={() => setQuotedText(null)}
+              className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
+              aria-label="Bỏ trích dẫn"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2 pr-2">
             {files.map((file, index) => {
@@ -307,7 +374,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
 
           <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
             <Badge variant="outline" className="text-[10px] font-mono">
-              {countTokens(value)} tokens
+              {countTokens(composedValue)} tokens
             </Badge>
             {tokenStats && (
               <Badge variant="outline" className="text-[10px] font-mono">
