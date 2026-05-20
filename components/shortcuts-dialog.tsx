@@ -9,6 +9,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ["Ctrl/⌘", "K"], label: "Mở lịch sử & menu" },
   { keys: ["Ctrl/⌘", "Shift", "O"], label: "Cuộc trò chuyện mới" },
   { keys: ["Ctrl/⌘", "/"], label: "Focus ô soạn tin" },
+  { keys: ["Ctrl/⌘", "F"], label: "Tìm trong chat" },
   { keys: ["Esc"], label: "Dừng streaming" },
   { keys: ["Shift", "?"], label: "Hiện cửa sổ này" },
 ]

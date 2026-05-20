@@ -1,7 +1,7 @@
 "use client"
 
 import { useChat } from "ai/react"
-import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent, type PointerEvent } from "react"
 import { countTokens, estimateCost, formatCost } from "@/lib/tokens"
 import { Header } from "@/components/header"
 import { Sidebar } from "@/components/sidebar"
@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
+import { ChatSearch } from "@/components/chat-search"
 import { MemoryDialog } from "@/components/memory-dialog"
 import { PromptLibraryDialog } from "@/components/prompt-library-dialog"
 import { ErrorLogDialog } from "@/components/error-log-dialog"
@@ -44,9 +45,11 @@ export function Chat() {
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false)
   const [errorLogOpen, setErrorLogOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null)
   const [sessionId, setSessionId] = useState<string>(() => newId())
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const chatRootRef = useRef<HTMLDivElement>(null)
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
   const messagesRef = useRef<any[]>([])
@@ -110,6 +113,10 @@ export function Chat() {
   const displayMessages = useMemo(
     () => messages.map((message, index) => ({ message, index })).filter(({ message }) => message.role !== "system"),
     [messages]
+  )
+  const searchRefreshKey = useMemo(
+    () => displayMessages.map(({ message }) => `${message.id}:${typeof message.content === "string" ? message.content.length : 0}`).join("|"),
+    [displayMessages]
   )
   const hasVisibleMessages = displayMessages.length > 0
 
@@ -316,6 +323,23 @@ export function Chat() {
     setSessionId(newId())
   }, [history, setMessages])
 
+  const handleChatPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest("input,textarea,button,a,[role='button'],[contenteditable='true']")) return
+    chatRootRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const handleChatKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+        if (!hasVisibleMessages) return
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    },
+    [hasVisibleMessages]
+  )
+
   const handleComposerSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault()
@@ -350,7 +374,13 @@ export function Chat() {
   )
 
   return (
-    <div className="relative flex h-[100dvh] flex-col bg-background">
+    <div
+      ref={chatRootRef}
+      tabIndex={-1}
+      className="relative flex h-[100dvh] flex-col bg-background outline-none"
+      onPointerDown={handleChatPointerDown}
+      onKeyDown={handleChatKeyDown}
+    >
       <div className="bg-dot-grid pointer-events-none fixed inset-0 -z-10 opacity-[0.15]" />
 
       <Sidebar
@@ -392,34 +422,35 @@ export function Chat() {
           {!hasVisibleMessages ? (
             <EmptyState onPick={(t) => setInput(t)} />
           ) : (
-            <div className="space-y-8 py-8">
+            <div className="space-y-8 py-8" data-chat-messages>
               {displayMessages.map(({ message: m, index: i }) => {
                 const isLastAssistant =
                   m.role === "assistant" && i === messages.length - 1 && !isLoading
                 return (
-                  <MessageBubble
-                    key={m.id}
-                    role={m.role}
-                    content={m.content}
-                    parts={m.parts}
-                    index={i}
-                    isStreaming={
-                      isLoading && i === messages.length - 1 && m.role === "assistant"
-                    }
-                    isLastAssistant={isLastAssistant}
-                    wasTruncated={isLastAssistant && isLikelyTruncated(m.content)}
-                    onContinue={
-                      isLastAssistant
-                        ? () =>
-                            append({
-                              role: "user",
-                              content: "Tiếp tục từ chỗ bạn vừa dừng, không lặp lại.",
-                            })
-                        : undefined
-                    }
-                    onRegenerate={() => reload()}
-                    onEdit={m.role === "user" ? handleEditMessage : undefined}
-                  />
+                  <div key={m.id} data-message-id={m.id ?? i}>
+                    <MessageBubble
+                      role={m.role}
+                      content={m.content}
+                      parts={m.parts}
+                      index={i}
+                      isStreaming={
+                        isLoading && i === messages.length - 1 && m.role === "assistant"
+                      }
+                      isLastAssistant={isLastAssistant}
+                      wasTruncated={isLastAssistant && isLikelyTruncated(m.content)}
+                      onContinue={
+                        isLastAssistant
+                          ? () =>
+                              append({
+                                role: "user",
+                                content: "Tiếp tục từ chỗ bạn vừa dừng, không lặp lại.",
+                              })
+                          : undefined
+                      }
+                      onRegenerate={() => reload()}
+                      onEdit={m.role === "user" ? handleEditMessage : undefined}
+                    />
+                  </div>
                 )
               })}
               {error && (
@@ -470,6 +501,7 @@ export function Chat() {
         </div>
       </div>
 
+      <ChatSearch open={searchOpen} onOpenChange={setSearchOpen} refreshKey={searchRefreshKey} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <MemoryDialog
         open={memoryOpen}
