@@ -89,34 +89,37 @@ export function MessageBubble({
     return () => document.removeEventListener("selectionchange", handleSelectionChange)
   }, [isUser])
 
+  function showQuoteButtonForSelection() {
+    const selection = window.getSelection()
+    const container = assistantMessageRef.current
+    const selectedText = selection?.toString().trim()
+    if (!selection || !container || !selectedText || !isSelectionInside(selection, container) || selection.rangeCount === 0) {
+      setQuoteButton(null)
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    // Với multi-line list selection: getBoundingClientRect cho rect bao trùm cả danh sách,
+    // tâm rect rơi giữa các <li> → button nhảy ra xa nơi user vừa thả chuột.
+    // Lấy rect TẠI focus point (cuối selection, nơi mouse release) → button bám sát selection.
+    const focusRect = getFocusRect(selection, range)
+    if (!focusRect) {
+      setQuoteButton(null)
+      return
+    }
+
+    const aboveSelection = focusRect.top > 56
+    const left = Math.min(Math.max(focusRect.left + focusRect.width / 2, 80), window.innerWidth - 80)
+    const top = aboveSelection ? focusRect.top - 42 : focusRect.bottom + 8
+    setQuoteButton({ text: selectedText, left, top })
+  }
+
   function handleAssistantMouseUp() {
-    // Đợi 1 tick để browser kết thúc cập nhật selection (đặc biệt với double/triple-click trên <li>).
-    setTimeout(() => {
-      const selection = window.getSelection()
-      const container = assistantMessageRef.current
-      const selectedText = selection?.toString().trim()
-      if (!selection || !container || !selectedText || !isSelectionInside(selection, container) || selection.rangeCount === 0) {
-        setQuoteButton(null)
-        return
-      }
+    setTimeout(showQuoteButtonForSelection, 0)
+  }
 
-      const range = selection.getRangeAt(0)
-      // Với selection trong <li> (list-disc/decimal), client rect đầu tiên có thể là rect rỗng
-      // tại biên — dùng bounding box bao trùm cả range, fallback sang rect non-zero đầu tiên.
-      const rects = Array.from(range.getClientRects())
-      const nonEmpty = rects.find((r) => r.width > 0 || r.height > 0)
-      const rect = range.getBoundingClientRect()
-      const usable = rect.width > 0 || rect.height > 0 ? rect : nonEmpty
-      if (!usable) {
-        setQuoteButton(null)
-        return
-      }
-
-      const aboveSelection = usable.top > 48
-      const left = Math.min(Math.max(usable.left + usable.width / 2, 80), window.innerWidth - 80)
-      const top = aboveSelection ? usable.top - 42 : usable.bottom + 8
-      setQuoteButton({ text: selectedText, left, top })
-    }, 0)
+  function handleAssistantTouchEnd() {
+    setTimeout(showQuoteButtonForSelection, 0)
   }
 
   function dispatchQuote() {
@@ -578,6 +581,38 @@ function isChartData(value: any): value is ChartData {
 function isSelectionInside(selection: Selection, container: HTMLElement) {
   const { anchorNode, focusNode } = selection
   return !!anchorNode && !!focusNode && container.contains(anchorNode) && container.contains(focusNode)
+}
+
+// Lấy rect ở điểm focus (cuối) của selection. Dùng list-item ::marker hoặc selection
+// vắt qua nhiều dòng → getClientRects() trả nhiều rect; ta chọn rect TẠI focusNode
+// (nơi user vừa thả chuột), KHÔNG phải rect đầu tiên — vì rect đầu có thể nằm
+// xa trên đầu danh sách.
+function getFocusRect(selection: Selection, range: Range): DOMRect | null {
+  const focusNode = selection.focusNode
+  const focusOffset = selection.focusOffset
+  if (focusNode) {
+    try {
+      const focusRange = document.createRange()
+      // Thử collapse range tại focusNode, lấy rect quanh đó.
+      focusRange.setStart(focusNode, Math.max(0, focusOffset - 1))
+      focusRange.setEnd(focusNode, focusOffset)
+      const rects = focusRange.getClientRects()
+      if (rects.length > 0) {
+        const r = rects[rects.length - 1]
+        if (r.width > 0 || r.height > 0) return r
+      }
+    } catch {
+      // setStart có thể throw nếu offset > length của focusNode (vd focusNode là element).
+    }
+  }
+  // Fallback: lấy rect cuối cùng có kích thước trong toàn selection range.
+  const allRects = Array.from(range.getClientRects())
+  for (let i = allRects.length - 1; i >= 0; i--) {
+    const r = allRects[i]
+    if (r.width > 0 || r.height > 0) return r
+  }
+  const bounding = range.getBoundingClientRect()
+  return bounding && (bounding.width > 0 || bounding.height > 0) ? bounding : null
 }
 
 function linkCitationMarkers(children: ReactNode, sources: CitationSource[]): ReactNode {
