@@ -1,13 +1,17 @@
 "use client"
-import { useState } from "react"
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useState } from "react"
+import type { ReactElement, ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X, MoreHorizontal, Volume2, VolumeX } from "lucide-react"
+import { Check, Copy, ExternalLink, Heart, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, Volume2, VolumeX, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
+import { MermaidRenderer } from "@/components/mermaid-renderer"
+import { ChartRenderer, type ChartData } from "@/components/chart-renderer"
 import { useTypewriter } from "@/hooks/use-typewriter"
 import { useSpeechSynthesis } from "@/hooks/use-voice"
+import { trackReaction } from "@/lib/analytics"
 import { cn } from "@/lib/utils"
 
 interface MessageProps {
@@ -22,6 +26,17 @@ interface MessageProps {
   onContinue?: () => void
   wasTruncated?: boolean
 }
+
+type CitationSource = {
+  title: string
+  url: string
+  snippet?: string
+}
+
+type Reaction = "up" | "down" | "heart" | null
+
+const REACTIONS_KEY = "tans:reactions"
+const SANDBOX_LANGUAGES = new Set(["js", "jsx", "javascript", "ts", "tsx", "typescript", "html", "css", "py", "python"])
 
 export function isLikelyTruncated(content: string): boolean {
   if (!content || content.length < 200) return false
@@ -45,6 +60,9 @@ export function MessageBubble({
 }: MessageProps) {
   const isUser = role === "user"
   const toolInvocations = (parts || []).filter((p) => p.type === "tool-invocation")
+  const citationSources = useMemo(() => extractCitationSources(toolInvocations), [toolInvocations])
+  const chartResults = useMemo(() => extractChartResults(toolInvocations), [toolInvocations])
+  const messageId = useMemo(() => createMessageId(index, content), [index, content])
   const displayedContent = useTypewriter(isUser ? "" : content)
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
@@ -144,12 +162,23 @@ export function MessageBubble({
           </div>
         )}
 
+        {chartResults.map((chart, i) => (
+          <ChartRenderer key={`${chart.title}-${i}`} data={chart} />
+        ))}
+
         {content ? (
           <div className={cn("prose-chat", showCursor && "prose-chat-streaming")}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 pre: (props: any) => <CodeBlock {...props} />,
+                p: ({ children, ...props }: any) => <p {...props}>{linkCitationMarkers(children, citationSources)}</p>,
+                li: ({ children, ...props }: any) => <li {...props}>{linkCitationMarkers(children, citationSources)}</li>,
+                blockquote: ({ children, ...props }: any) => <blockquote {...props}>{linkCitationMarkers(children, citationSources)}</blockquote>,
+                strong: ({ children, ...props }: any) => <strong {...props}>{linkCitationMarkers(children, citationSources)}</strong>,
+                em: ({ children, ...props }: any) => <em {...props}>{linkCitationMarkers(children, citationSources)}</em>,
+                td: ({ children, ...props }: any) => <td {...props}>{linkCitationMarkers(children, citationSources)}</td>,
+                th: ({ children, ...props }: any) => <th {...props}>{linkCitationMarkers(children, citationSources)}</th>,
               }}
             >
               {displayedContent || ""}
@@ -159,33 +188,32 @@ export function MessageBubble({
           toolInvocations.length === 0 && <ThinkingDots />
         )}
 
+        {citationSources.length > 0 && <CitationSources sources={citationSources} />}
+
         {content && !showCursor && (
-          <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-            <CopyAction text={content} />
-            {voice.supported && (
-              <ActionIcon
-                label={voice.speaking ? "Dừng đọc" : "Đọc câu trả lời"}
-                onClick={() => voice.speaking ? voice.cancel() : voice.speak(content, { lang: "vi-VN", rate: 1 })}
-              >
-                {voice.speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              </ActionIcon>
-            )}
-            {isLastAssistant && onRegenerate && (
-              <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
-                <RefreshCw className="h-3.5 w-3.5" />
-              </ActionIcon>
-            )}
-            {showContinue && (
-              <ActionIcon label="Tiếp tục" onClick={onContinue}>
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </ActionIcon>
-            )}
-            <ActionIcon label="Hữu ích">
-              <ThumbsUp className="h-3.5 w-3.5" />
-            </ActionIcon>
-            <ActionIcon label="Không hữu ích">
-              <ThumbsDown className="h-3.5 w-3.5" />
-            </ActionIcon>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+              <CopyAction text={content} />
+              {voice.supported && (
+                <ActionIcon
+                  label={voice.speaking ? "Dừng đọc" : "Đọc câu trả lời"}
+                  onClick={() => voice.speaking ? voice.cancel() : voice.speak(content, { lang: "vi-VN", rate: 1 })}
+                >
+                  {voice.speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                </ActionIcon>
+              )}
+              {isLastAssistant && onRegenerate && (
+                <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </ActionIcon>
+              )}
+              {showContinue && (
+                <ActionIcon label="Tiếp tục" onClick={onContinue}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </ActionIcon>
+              )}
+            </div>
+            <AssistantReactions messageId={messageId} />
           </div>
         )}
       </div>
@@ -200,7 +228,7 @@ function ActionIcon({
 }: {
   label: string
   onClick?: () => void
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <Tooltip>
@@ -237,7 +265,7 @@ function CopyAction({ text }: { text: string }) {
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{copied ? "Đã copy" : "Copy"}</TooltipContent>
+      <TooltipContent>{copied ? "Đã copy" : "Sao chép"}</TooltipContent>
     </Tooltip>
   )
 }
@@ -252,24 +280,303 @@ export function ThinkingDots() {
   )
 }
 
-function CodeBlock({ children, ...props }: any) {
-  const text = extractText(children)
+function CodeBlock({ children }: any) {
+  const rawText = extractText(children)
+  const text = rawText.endsWith("\n") ? rawText.slice(0, -1) : rawText
+  const language = getCodeLanguage(children)
+  const normalizedLanguage = language.toLowerCase()
+  const lines = text.length > 0 ? text.split("\n") : [""]
+  const [expanded, setExpanded] = useState(lines.length <= 30)
+  const [copied, setCopied] = useState(false)
+  const visibleLines = expanded ? lines : lines.slice(0, 30)
+
+  if (normalizedLanguage === "mermaid") {
+    return <MermaidRenderer code={text} />
+  }
+
+  function copyCode() {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  function openCodeSandbox() {
+    copyCode()
+    window.open("https://codesandbox.io/s/new", "_blank", "noopener,noreferrer")
+  }
+
   return (
-    <div className="group/code relative">
-      <pre {...props}>{children}</pre>
-      <button
-        onClick={() => navigator.clipboard.writeText(text)}
-        className="absolute right-2 top-2 rounded-md border border-border bg-background/80 px-2 py-1 text-xs opacity-0 backdrop-blur transition-opacity hover:bg-background group-hover/code:opacity-100"
-      >
-        Copy
-      </button>
+    <div className="group/code my-4 overflow-hidden rounded-xl border border-border bg-card text-sm">
+      <div className="flex items-center gap-3 border-b border-border bg-muted/30 px-3 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {SANDBOX_LANGUAGES.has(normalizedLanguage) && (
+            <button
+              type="button"
+              onClick={openCodeSandbox}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ExternalLink className="h-3 w-3" /> Mở trong CodeSandbox
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={copyCode}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} {copied ? "Đã sao chép" : "Sao chép"}
+          </button>
+        </div>
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">{language || "text"}</span>
+      </div>
+      <pre className="m-0 overflow-x-auto bg-transparent p-0">
+        <code className={cn("block py-2 font-mono text-sm", language && `language-${language}`)}>
+          {visibleLines.map((line, i) => (
+            <span key={i} className="table-row">
+              <span className="table-cell w-10 select-none border-r border-border/60 px-3 text-right text-xs leading-6 text-muted-foreground/70">
+                {i + 1}
+              </span>
+              <span className="table-cell whitespace-pre px-4 leading-6 text-foreground">{line || " "}</span>
+            </span>
+          ))}
+        </code>
+      </pre>
+      {lines.length > 30 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-border bg-muted/20 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          Hiển thị tất cả ({lines.length} dòng)
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AssistantReactions({ messageId }: { messageId: string }) {
+  const [reaction, setReaction] = useState<Reaction>(null)
+
+  useEffect(() => {
+    setReaction(readStoredReaction(messageId))
+  }, [messageId])
+
+  function toggle(nextReaction: Exclude<Reaction, null>) {
+    const next = reaction === nextReaction ? null : nextReaction
+    setReaction(next)
+    writeStoredReaction(messageId, next)
+    trackReaction(messageId, next)
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <ReactionButton label="Hữu ích" selected={reaction === "up"} onClick={() => toggle("up")}>
+        <ThumbsUp className={cn("h-3.5 w-3.5", reaction === "up" && "fill-current")} />
+      </ReactionButton>
+      <ReactionButton label="Không hữu ích" selected={reaction === "down"} onClick={() => toggle("down")}>
+        <ThumbsDown className={cn("h-3.5 w-3.5", reaction === "down" && "fill-current")} />
+      </ReactionButton>
+      <ReactionButton label="Yêu thích" selected={reaction === "heart"} onClick={() => toggle("heart")}>
+        <Heart className={cn("h-3.5 w-3.5", reaction === "heart" && "fill-current")} />
+      </ReactionButton>
+    </div>
+  )
+}
+
+function ReactionButton({
+  label,
+  selected,
+  onClick,
+  children,
+}: {
+  label: string
+  selected: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-pressed={selected}
+          className={cn(
+            "h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground",
+            selected && "bg-muted text-primary hover:text-primary"
+          )}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function CitationSources({ sources }: { sources: CitationSource[] }) {
+  return (
+    <div className="border-t border-border/60 pt-2">
+      <div className="mb-1.5 text-xs font-medium text-muted-foreground">Nguồn:</div>
+      <div className="flex flex-wrap gap-1.5">
+        {sources.map((source, index) => (
+          <a
+            key={`${source.url}-${index}`}
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            title={source.title}
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            [{index + 1}]
+          </a>
+        ))}
+      </div>
     </div>
   )
 }
 
 function extractText(node: any): string {
   if (typeof node === "string") return node
+  if (typeof node === "number") return String(node)
   if (Array.isArray(node)) return node.map(extractText).join("")
   if (node?.props?.children) return extractText(node.props.children)
   return ""
+}
+
+function getCodeLanguage(children: any): string {
+  const child = Array.isArray(children) ? children[0] : children
+  const className = child?.props?.className ?? ""
+  const match = /language-([^\s]+)/.exec(className)
+  return match?.[1] ?? ""
+}
+
+function extractCitationSources(toolInvocations: any[]): CitationSource[] {
+  const sources: CitationSource[] = []
+  const seen = new Set<string>()
+
+  for (const part of toolInvocations) {
+    const invocation = part?.toolInvocation
+    if (invocation?.toolName !== "webSearch") continue
+
+    const result = parseToolResult(invocation.result)
+    const results = Array.isArray(result?.results) ? result.results : []
+
+    for (const item of results) {
+      if (!item?.url || seen.has(item.url)) continue
+      seen.add(item.url)
+      sources.push({
+        title: String(item.title || item.url),
+        url: String(item.url),
+        snippet: item.snippet ? String(item.snippet) : undefined,
+      })
+    }
+  }
+
+  return sources
+}
+
+function extractChartResults(toolInvocations: any[]): ChartData[] {
+  return toolInvocations
+    .map((part) => part?.toolInvocation)
+    .filter((invocation) => invocation?.toolName === "chartGen" && invocation?.state === "result")
+    .map((invocation) => parseToolResult(invocation.result))
+    .filter(isChartData)
+}
+
+function parseToolResult(result: any): any {
+  if (typeof result !== "string") return result
+  try {
+    return JSON.parse(result)
+  } catch {
+    return result
+  }
+}
+
+function isChartData(value: any): value is ChartData {
+  return (
+    value &&
+    typeof value === "object" &&
+    (value.type === "line" || value.type === "bar" || value.type === "pie") &&
+    typeof value.title === "string" &&
+    Array.isArray(value.labels) &&
+    Array.isArray(value.data)
+  )
+}
+
+function linkCitationMarkers(children: ReactNode, sources: CitationSource[]): ReactNode {
+  if (sources.length === 0) return children
+
+  return Children.map(children, (child) => {
+    if (typeof child === "string") return splitCitationText(child, sources)
+    if (!isValidElement(child)) return child
+    if (typeof child.type === "string" && ["a", "code", "pre"].includes(child.type)) return child
+
+    const element = child as ReactElement<{ children?: ReactNode }>
+    if (!element.props.children) return child
+    return cloneElement(element, undefined, linkCitationMarkers(element.props.children, sources))
+  })
+}
+
+function splitCitationText(text: string, sources: CitationSource[]): ReactNode {
+  const parts: ReactNode[] = []
+  const regex = /\[(\d+)\]/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(text))) {
+    const sourceIndex = Number(match[1]) - 1
+    const source = sources[sourceIndex]
+
+    if (!source) continue
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
+    parts.push(
+      <a
+        key={`${source.url}-${match.index}`}
+        href={source.url}
+        target="_blank"
+        rel="noreferrer"
+        title={source.title}
+        className="font-medium text-primary underline-offset-2 hover:underline"
+      >
+        {match[0]}
+      </a>
+    )
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex === 0) return text
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts
+}
+
+function readStoredReaction(messageId: string): Reaction {
+  if (typeof window === "undefined") return null
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REACTIONS_KEY) || "{}")
+    const reaction = parsed?.[messageId]
+    return reaction === "up" || reaction === "down" || reaction === "heart" ? reaction : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredReaction(messageId: string, reaction: Reaction) {
+  if (typeof window === "undefined") return
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REACTIONS_KEY) || "{}")
+    window.localStorage.setItem(REACTIONS_KEY, JSON.stringify({ ...parsed, [messageId]: reaction }))
+  } catch {
+    window.localStorage.setItem(REACTIONS_KEY, JSON.stringify({ [messageId]: reaction }))
+  }
+}
+
+function createMessageId(index: number, content: string): string {
+  let hash = 0
+  for (let i = 0; i < content.length; i += 1) {
+    hash = (hash * 31 + content.charCodeAt(i)) | 0
+  }
+  return `assistant:${index}:${Math.abs(hash)}`
 }

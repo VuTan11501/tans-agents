@@ -1,12 +1,16 @@
+export type ReactionValue = "up" | "down" | "heart" | null
+
 export type Event = {
   time: number
-  type: "message_sent" | "message_received" | "error" | "tool_call"
+  type: "message_sent" | "message_received" | "error" | "tool_call" | "reaction"
   model?: string
   provider?: string
   tool?: string
   tokensIn?: number
   tokensOut?: number
   latencyMs?: number
+  messageId?: string
+  reaction?: ReactionValue
 }
 
 const STORAGE_KEY = "tans-agents:events"
@@ -24,7 +28,8 @@ function isEvent(value: unknown): value is Event {
     (event.type === "message_sent" ||
       event.type === "message_received" ||
       event.type === "error" ||
-      event.type === "tool_call")
+      event.type === "tool_call" ||
+      event.type === "reaction")
   )
 }
 
@@ -58,6 +63,10 @@ export function logEvent(event: Event) {
       // Ignore storage failures so analytics never interrupts chat.
     }
   }
+}
+
+export function trackReaction(messageId: string, reaction: ReactionValue): void {
+  logEvent({ time: Date.now(), type: "reaction", messageId, reaction })
 }
 
 export function clearEvents() {
