@@ -26,6 +26,7 @@ import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
 import { useMemory } from "@/hooks/use-memory"
 import { useUserKeys } from "@/hooks/use-user-keys"
 import { logError } from "@/lib/error-log"
+import { friendlyError } from "@/lib/friendly-error"
 import { streamAbComparison, type AbStreamHandle } from "@/lib/ab"
 import { getActiveCollectionId, RAG_ACTIVE_COLLECTION_EVENT } from "@/lib/collections"
 import { cn } from "@/lib/utils"
@@ -704,7 +705,7 @@ export function Chat() {
         />
       </div>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className={cn("mx-auto px-4", activeAb ? "max-w-5xl" : "max-w-3xl")}>
           <div className="pt-3">
             <AbToggle
@@ -770,14 +771,29 @@ export function Chat() {
                     !
                   </div>
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
-                      <div className="px-3 pt-2 font-medium">Có lỗi khi gọi AI:</div>
-                      <ScrollArea className="max-h-40">
-                        <div className="px-3 pb-2 pt-1 text-xs opacity-90 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                          {error.message}
+                    {(() => {
+                      const fe = friendlyError(error)
+                      return (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
+                          <div className="px-3 pt-2 font-medium">{fe.title}</div>
+                          {fe.hint && (
+                            <div className="px-3 pb-1 pt-1 text-xs opacity-90 [overflow-wrap:anywhere]">
+                              {fe.hint}
+                            </div>
+                          )}
+                          <details className="px-3 pb-2">
+                            <summary className="cursor-pointer text-[11px] opacity-60 hover:opacity-100">
+                              Chi tiết kỹ thuật
+                            </summary>
+                            <ScrollArea className="mt-1 max-h-40 rounded border border-destructive/20 bg-destructive/5">
+                              <div className="px-2 py-1 font-mono text-[11px] opacity-80 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                {fe.raw}
+                              </div>
+                            </ScrollArea>
+                          </details>
                         </div>
-                      </ScrollArea>
-                    </div>
+                      )
+                    })()}
                     <button
                       onClick={() => reload()}
                       className="rounded-md border border-border bg-background px-3 py-1 text-xs hover:bg-muted"
@@ -793,7 +809,7 @@ export function Chat() {
         </div>
       </main>
 
-      <div className="sticky bottom-0 border-t border-border/50 bg-background/70 backdrop-blur-xl">
+      <div className="shrink-0 border-t border-border/50 bg-background/70 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto max-w-3xl px-4 py-4">
           <Composer
             value={input}
