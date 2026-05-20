@@ -1,6 +1,6 @@
 "use client"
 import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, Eye, FileText, Mic, Paperclip, Plus, Square, X } from "lucide-react"
+import { ArrowUp, Brain, Eye, FileText, FolderArchive, Mic, Paperclip, Plus, Square, X } from "lucide-react"
 import { MarkdownPreview } from "@/components/markdown-preview"
 import { RagPicker } from "@/components/rag-picker"
 import { Textarea } from "@/components/ui/textarea"
@@ -546,28 +546,33 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           )}
         </div>
       </div>
-      <div className="mt-1.5 flex items-center justify-end gap-1.5 px-2 text-[10px] text-muted-foreground">
+      <div className="mt-1.5 flex items-center justify-end gap-1 px-2 text-[10px] text-muted-foreground">
+        <AiFeatureToggle storageKey="tans:self-critique" label="Tự đánh giá câu trả lời" icon={<Brain className="h-3.5 w-3.5" />} />
+        <AiFeatureToggle storageKey="tans:auto-compact" label="Tự nén context khi đầy" icon={<FolderArchive className="h-3.5 w-3.5" />} />
+        <span className="mx-1 h-3 w-px bg-border/60" aria-hidden />
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className={cn("inline-flex items-center gap-1.5", contextRingColor)}>
-              <div className="relative inline-flex h-5 w-5 items-center justify-center">
-                <svg className="absolute inset-0 h-5 w-5 -rotate-90" viewBox="0 0 20 20" aria-hidden>
-                  <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
+            <div className={cn("inline-flex items-center", contextRingColor)}>
+              <div className="relative inline-flex h-7 w-7 items-center justify-center">
+                <svg className="absolute inset-0 h-7 w-7 -rotate-90" viewBox="0 0 28 28" aria-hidden>
+                  <circle cx="14" cy="14" r="11" fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
                   <circle
-                    cx="10"
-                    cy="10"
-                    r="8"
+                    cx="14"
+                    cy="14"
+                    r="11"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2.5"
                     strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 8}
-                    strokeDashoffset={2 * Math.PI * 8 * (1 - contextUsage.barPct / 100)}
+                    strokeDasharray={2 * Math.PI * 11}
+                    strokeDashoffset={2 * Math.PI * 11 * (1 - contextUsage.barPct / 100)}
                     style={{ transition: "stroke-dashoffset 200ms ease-out" }}
                   />
                 </svg>
+                <span className="relative text-[9px] font-semibold leading-none tabular-nums">
+                  {contextUsage.pct}
+                </span>
               </div>
-              <span className="font-medium tabular-nums">{contextUsage.pct}%</span>
             </div>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -584,5 +589,36 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
         onSave={saveMarkedImage}
       />
     </form>
+  )
+}
+
+function AiFeatureToggle({ storageKey, label, icon }: { storageKey: string; label: string; icon: React.ReactNode }) {
+  const [enabled, setEnabled] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setEnabled(window.localStorage.getItem(storageKey) === "true")
+  }, [storageKey])
+  function toggle() {
+    const next = !enabled
+    setEnabled(next)
+    if (typeof window !== "undefined") window.localStorage.setItem(storageKey, String(next))
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-pressed={enabled}
+          className={cn(
+            "inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors",
+            enabled ? "bg-primary/15 text-primary" : "text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+          )}
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label} · {enabled ? "Bật" : "Tắt"}</TooltipContent>
+    </Tooltip>
   )
 }
