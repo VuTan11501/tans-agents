@@ -76,18 +76,19 @@
 
 @layer base {
   * { @apply border-border; }
-  html, body {
-    height: 100%;
-    height: 100dvh;
-    overflow: hidden;
-  }
+  html, body { @apply h-full; }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
   }
-  #__next, [data-nextjs-scroll-focus-boundary] {
-    height: 100%;
-  }
+}
+
+/* Chat shell — pin to visual viewport so the composer & navbar can't drift */
+.chat-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Subtle dot-grid background pattern */

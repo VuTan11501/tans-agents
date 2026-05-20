@@ -661,7 +661,7 @@ export function Chat() {
     <div
       ref={chatRootRef}
       tabIndex={-1}
-      className="relative flex h-[100dvh] flex-col bg-background outline-none"
+      className="chat-shell bg-background outline-none"
       onPointerDown={handleChatPointerDown}
       onKeyDown={handleChatKeyDown}
     >
