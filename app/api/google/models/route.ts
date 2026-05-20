@@ -35,11 +35,11 @@ export async function POST(req: Request) {
         inputTokenLimit: m.inputTokenLimit,
         outputTokenLimit: m.outputTokenLimit,
         description: m.description,
+        methods: m.supportedGenerationMethods,
       }))
-      .filter((m) => !/embedding|aqa|imagen|tts|veo|lyria|image|vision-only/i.test(m.id))
       .sort((a, b) => a.id.localeCompare(b.id))
 
-    return NextResponse.json({ models: chatModels })
+    return NextResponse.json({ models: chatModels, totalRaw: all.length })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
