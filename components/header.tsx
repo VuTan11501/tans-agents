@@ -65,6 +65,7 @@ export function Header({
 }: HeaderProps) {
   const [apiKeysOpen, setApiKeysOpen] = useState(false)
   const providerLabel = PROVIDERS[provider].label
+  const isAutoModel = model === "auto"
   const hasKeys = hasAnyUserKey(userKeys)
   const currentPersona = getPersona(persona)
   const toggleVoiceMode = () => window.dispatchEvent(new CustomEvent("tans:voice-toggle"))
@@ -105,14 +106,27 @@ export function Header({
                 size="sm"
                 className="h-8 min-w-0 max-w-full shrink gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
               >
-                <span className="hidden text-muted-foreground lg:inline">{providerLabel}</span>
+                {!isAutoModel && <span className="hidden text-muted-foreground lg:inline">{providerLabel}</span>}
                 {/* Show persona emoji inside model picker on mobile (saves a button) */}
-                <span className="sm:hidden" aria-hidden>{currentPersona.emoji}</span>
-                <span className="truncate font-mono">{model}</span>
+                <span className="sm:hidden" aria-hidden>{isAutoModel ? "🤖" : currentPersona.emoji}</span>
+                {isAutoModel ? (
+                  <span className="hidden truncate font-mono sm:inline">🤖 Auto</span>
+                ) : (
+                  <span className="truncate font-mono">{model}</span>
+                )}
                 <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" className="w-72">
+              <DropdownMenuItem
+                onClick={() => onChange(provider, "auto")}
+                className={cn("text-xs", isAutoModel && "bg-accent")}
+              >
+                <span className="mr-2 text-base">🤖</span>
+                <span className="flex-1">Auto (chọn theo prompt)</span>
+                {isAutoModel && <Check className="h-3 w-3" />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {Object.entries(PROVIDERS).map(([pKey, p]) => (
                 <div key={pKey}>
                   <DropdownMenuLabel className="flex items-center justify-between">

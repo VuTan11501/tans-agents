@@ -1,5 +1,5 @@
 "use client"
-import { useRef, useEffect, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowUp, FileText, Mic, Paperclip, Square, X } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -18,12 +18,31 @@ interface ComposerProps {
   disabled?: boolean
   placeholder?: string
   tokenStats?: { input: number; output: number; cost: string | null }
+  messages?: Array<{ content?: unknown }>
+  model?: string
   files?: File[]
   onFilesChange?: (files: File[]) => void
 }
 
 const MAX_FILES = 4
 const ACCEPTED_FILE_TYPES = "image/*,application/pdf,text/*"
+const DEFAULT_CONTEXT_LIMIT = 128_000
+const CONTEXT_LIMITS: Record<string, number> = {
+  auto: DEFAULT_CONTEXT_LIMIT,
+  "gpt-4o": 128_000,
+  "gpt-4o-mini": 128_000,
+  "gemini-2.5-flash-lite": 1_000_000,
+  "gemini-2.5-flash": 1_000_000,
+  "gemini-2.5-pro": 1_000_000,
+  "gemini-2.0-flash": 1_000_000,
+  "gemini-2.0-flash-lite": 1_000_000,
+  "llama-3.3-70b-versatile": 131_072,
+  "llama-3.1-8b-instant": 131_072,
+  "openai/gpt-oss-120b": 131_072,
+  "openai/gpt-oss-20b": 131_072,
+  "qwen/qwen3-32b": 131_072,
+  "meta-llama/llama-4-scout-17b-16e-instruct": 131_072,
+}
 
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`
@@ -33,7 +52,7 @@ function isAcceptedFile(file: File) {
   return file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/")
 }
 
-export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, files = [], onFilesChange }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, messages = [], model, files = [], onFilesChange }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voiceBaseRef = useRef("")
@@ -55,6 +74,15 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
   const canSubmit = (!!value.trim() || files.length > 0) && !disabled
+  const contextUsage = useMemo(() => {
+    const used = messages.reduce((sum, message) => {
+      return sum + countTokens(typeof message.content === "string" ? message.content : "")
+    }, countTokens(value))
+    const limit = (model && CONTEXT_LIMITS[model]) || DEFAULT_CONTEXT_LIMIT
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
+    return { used, limit, pct, barPct: Math.min(100, Math.max(0, pct)) }
+  }, [messages, model, value])
+  const contextBarClass = contextUsage.pct < 50 ? "bg-primary" : contextUsage.pct <= 80 ? "bg-amber-500" : "bg-red-500"
 
   // Auto-grow
   useEffect(() => {
@@ -222,6 +250,18 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             Thả file vào đây (tối đa {MAX_FILES})
           </div>
         )}
+
+        <div className="mb-2 flex items-center gap-2 pr-2">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              style={{ width: `${contextUsage.barPct}%` }}
+              className={cn("h-full rounded-full transition-all", contextBarClass)}
+            />
+          </div>
+          <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+            Đang dùng {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} token ({contextUsage.pct}%)
+          </span>
+        </div>
 
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2 pr-2">

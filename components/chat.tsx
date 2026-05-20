@@ -89,6 +89,9 @@ export function Chat() {
         error: err.message,
       })
     },
+    onFinish: () => {
+      window.dispatchEvent(new CustomEvent("tans:assistant-finished"))
+    },
   })
 
   useEffect(() => {
@@ -170,6 +173,38 @@ export function Chat() {
     setProvider(p)
     setModel(m)
   }
+
+  const sendUserMessage = useCallback(
+    async (userMessage: PendingMessage) => {
+      setInput("")
+      setAttachedFiles([])
+
+      if (!hasVisibleMessages) {
+        setMessages([{ id: newId(), role: "system", content: personaSystemPrompt } as any])
+        setPendingFirstMessage(userMessage)
+        return
+      }
+
+      await append({
+        role: "user",
+        content: userMessage.content,
+        experimental_attachments: userMessage.attachments,
+      } as any)
+    },
+    [append, hasVisibleMessages, personaSystemPrompt, setInput, setMessages]
+  )
+
+  useEffect(() => {
+    function handleVoiceSend(event: Event) {
+      if (isLoading) return
+      const text = (event as CustomEvent<{ text?: unknown }>).detail?.text
+      if (typeof text !== "string" || !text.trim()) return
+      void sendUserMessage({ content: text.trim() })
+    }
+
+    window.addEventListener("tans:voice-send", handleVoiceSend)
+    return () => window.removeEventListener("tans:voice-send", handleVoiceSend)
+  }, [isLoading, sendUserMessage])
 
   function handleSelectPrompt(prompt: PromptItem) {
     setInput((current) => {
@@ -309,22 +344,9 @@ export function Chat() {
         attachments: attachments.length > 0 ? attachments : undefined,
       }
 
-      setInput("")
-      setAttachedFiles([])
-
-      if (!hasVisibleMessages) {
-        setMessages([{ id: newId(), role: "system", content: personaSystemPrompt } as any])
-        setPendingFirstMessage(userMessage)
-        return
-      }
-
-      await append({
-        role: "user",
-        content: userMessage.content,
-        experimental_attachments: userMessage.attachments,
-      } as any)
+      await sendUserMessage(userMessage)
     },
-    [append, attachedFiles, hasVisibleMessages, input, isLoading, personaSystemPrompt, setInput, setMessages]
+    [attachedFiles, input, isLoading, sendUserMessage]
   )
 
   return (
@@ -436,6 +458,8 @@ export function Chat() {
             onStop={stop}
             isStreaming={isLoading}
             tokenStats={tokenStats}
+            messages={messages}
+            model={model}
             files={attachedFiles}
             onFilesChange={setAttachedFiles}
           />
