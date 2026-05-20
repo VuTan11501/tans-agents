@@ -420,21 +420,21 @@ async function fetchJsonWithTimeout(url: string, init: RequestInit = {}): Promis
 }
 
 export const runJs = tool({
-  description: "Ch?y JavaScript trong worker sandbox. D?ng ?? test snippet, t?nh to?n, parse data.",
-  parameters: z.object({ code: z.string() }),
+  description: "Chạy JavaScript trong worker sandbox. Dùng để test snippet, tính toán, parse data.",
+  parameters: z.object({ code: z.string().describe("JavaScript source code") }),
   execute: async ({ code }) => ({ code }),
 })
 
 export const cryptoPrice = tool({
-  description: "L?y gi? crypto hi?n t?i (USD + VND, bi?n ??ng 24h). D?ng CoinGecko free API.",
-  parameters: z.object({ symbol: z.string().describe("Coin id like bitcoin, ethereum") }),
+  description: "Lấy giá crypto hiện tại (USD + VND, biến động 24h). Dùng CoinGecko free API.",
+  parameters: z.object({ symbol: z.string().describe("Coin id like bitcoin, ethereum, solana") }),
   execute: async ({ symbol }) => {
     try {
       const id = symbol.trim().toLowerCase()
       const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd,vnd&include_24hr_change=true`
       const data = await fetchJsonWithTimeout(url, { headers: { Accept: "application/json" } })
       const coin = data?.[id]
-      if (!coin) return { error: `Kh?ng t?m th?y coin id: ${symbol}` }
+      if (!coin) return { error: `Không tìm thấy coin id: ${symbol}` }
       return {
         symbol: id,
         usd: coin.usd,
@@ -448,15 +448,15 @@ export const cryptoPrice = tool({
 })
 
 export const stockPrice = tool({
-  description: "L?y gi? c? phi?u (Yahoo Finance). H? tr? ticker qu?c t? (AAPL, TSLA, VNM.VN, ...).",
-  parameters: z.object({ ticker: z.string() }),
+  description: "Lấy giá cổ phiếu (Yahoo Finance). Hỗ trợ ticker quốc tế (AAPL, TSLA, VNM.VN, ...).",
+  parameters: z.object({ ticker: z.string().describe("Stock ticker symbol, e.g. AAPL or VNM.VN") }),
   execute: async ({ ticker }) => {
     try {
       const symbol = ticker.trim().toUpperCase()
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
       const data = await fetchJsonWithTimeout(url, { headers: { Accept: "application/json" } })
       const result = data?.chart?.result?.[0]
-      if (!result) return { error: `Kh?ng t?m th?y ticker: ${ticker}` }
+      if (!result) return { error: `Không tìm thấy ticker: ${ticker}` }
       const meta = result.meta ?? {}
       const closes = (result.indicators?.quote?.[0]?.close ?? []).filter((value: unknown): value is number => typeof value === "number")
       const price = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : closes[closes.length - 1]
@@ -477,11 +477,11 @@ export const stockPrice = tool({
 })
 
 export const translate = tool({
-  description: "D?ch v?n b?n gi?a c?c ng?n ng? (MyMemory free API).",
+  description: "Dịch văn bản giữa các ngôn ngữ (MyMemory free API).",
   parameters: z.object({
-    text: z.string(),
-    targetLang: z.string().describe("vi, en, ja, ko, zh, ..."),
-    sourceLang: z.string().optional(),
+    text: z.string().describe("Text to translate"),
+    targetLang: z.string().describe("Target language code: vi, en, ja, ko, zh, ..."),
+    sourceLang: z.string().optional().describe("Source language code; omit for auto-detect"),
   }),
   execute: async ({ text, targetLang, sourceLang }) => {
     try {
@@ -501,10 +501,10 @@ export const translate = tool({
 })
 
 export const githubQuery = tool({
-  description: "Truy v?n GitHub: repo info, issue/PR ?ang m?, search code, user profile.",
+  description: "Truy vấn GitHub: repo info, issue/PR đang mở, search code, user profile.",
   parameters: z.object({
-    kind: z.enum(["repo", "issues", "prs", "code", "user"]),
-    query: z.string().describe("owner/repo OR search keywords"),
+    kind: z.enum(["repo", "issues", "prs", "code", "user"]).describe("Loại truy vấn"),
+    query: z.string().describe("owner/repo (cho repo/issues/prs) HOẶC keyword (cho code/user)"),
   }),
   execute: async ({ kind, query }) => {
     try {
@@ -514,7 +514,7 @@ export const githubQuery = tool({
       }
       if (kind === "repo") {
         const repo = parseGitHubRepo(query)
-        if (!repo) return { error: "Repo ph?i c? d?ng owner/repo" }
+        if (!repo) return { error: "Repo phải có dạng owner/repo" }
         const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}`, { headers })
         return {
           name: data.full_name,
@@ -529,7 +529,7 @@ export const githubQuery = tool({
       }
       if (kind === "issues") {
         const repo = parseGitHubRepo(query)
-        if (!repo) return { error: "Issues c?n query d?ng owner/repo" }
+        if (!repo) return { error: "Issues cần query dạng owner/repo" }
         const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}/issues?state=open&per_page=10`, { headers })
         return {
           repo,
@@ -541,7 +541,7 @@ export const githubQuery = tool({
       }
       if (kind === "prs") {
         const repo = parseGitHubRepo(query)
-        if (!repo) return { error: "PRs c?n query d?ng owner/repo" }
+        if (!repo) return { error: "PRs cần query dạng owner/repo" }
         const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=10`, { headers })
         return {
           repo,
@@ -579,12 +579,12 @@ function parseGitHubRepo(query: string): string | null {
 }
 
 export const emailCompose = tool({
-  description: "So?n email draft. Tr? v? mailto: link ?? m? client email.",
+  description: "Soạn email draft. Trả về mailto: link để mở client email.",
   parameters: z.object({
-    to: z.string().optional(),
-    subject: z.string(),
-    body: z.string(),
-    cc: z.string().optional(),
+    to: z.string().optional().describe("Email người nhận"),
+    subject: z.string().describe("Tiêu đề email"),
+    body: z.string().describe("Nội dung email"),
+    cc: z.string().optional().describe("Email CC (tuỳ chọn)"),
   }),
   execute: async ({ to, subject, body, cc }) => {
     try {

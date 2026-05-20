@@ -53,6 +53,8 @@ const CONTEXT_LIMITS: Record<string, number> = {
   "gemini-2.5-pro": 1_000_000,
   "gemini-2.0-flash": 1_000_000,
   "gemini-2.0-flash-lite": 1_000_000,
+  "gemma-4-26b-a4b-it": 32_768,
+  "gemma-4-31b-it": 32_768,
   "llama-3.3-70b-versatile": 131_072,
   "llama-3.1-8b-instant": 131_072,
   "openai/gpt-oss-120b": 131_072,

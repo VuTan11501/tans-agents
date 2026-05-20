@@ -28,8 +28,12 @@ export async function POST(req: Request) {
     const data = (await res.json()) as { models?: GoogleModel[] }
     const all = data.models ?? []
 
+    // Loại các model không dùng được cho chat text (TTS/audio/image/video/robotics/computer-use/
+    // agents như antigravity & deep-research — đa số quota free = 0 hoặc đòi multipart đặc biệt).
+    const EXCLUDE = /(tts|audio|image|imagen|nano-banana|lyria|veo|robotics|computer-use|antigravity|deep-research|embedding|customtools)/i
     const chatModels = all
       .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+      .filter((m) => !EXCLUDE.test(m.name))
       .map((m) => ({
         id: m.name.replace(/^models\//, ""),
         inputTokenLimit: m.inputTokenLimit,

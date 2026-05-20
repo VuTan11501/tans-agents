@@ -16,6 +16,8 @@ export const PRICING: Record<string, { in: number; out: number }> = {
   "gemini-2.5-pro": { in: 1.25, out: 5 },
   "gemini-2.0-flash": { in: 0.075, out: 0.3 },
   "gemini-2.0-flash-lite": { in: 0.04, out: 0.15 },
+  "gemma-4-26b-a4b-it": { in: 0, out: 0 },
+  "gemma-4-31b-it": { in: 0, out: 0 },
   "llama-3.3-70b-versatile": { in: 0.59, out: 0.79 },
   "llama-3.1-8b-instant": { in: 0.05, out: 0.08 },
   "openai/gpt-oss-120b": { in: 0.15, out: 0.6 },

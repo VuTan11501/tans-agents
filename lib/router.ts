@@ -4,12 +4,12 @@ type ChatMessage = {
 }
 
 const MODEL_MAP = {
-  coding: "gpt-4o",
-  reasoning: "gemini-2.5-pro",
+  coding: "openai/gpt-oss-120b",
+  reasoning: "qwen/qwen3-32b",
   writing: "gemini-2.5-flash",
-  translation: "gemini-2.0-flash-lite",
+  translation: "llama-3.3-70b-versatile",
   fastFact: "llama-3.1-8b-instant",
-  default: "gemini-2.5-flash-lite",
+  default: "gemini-2.5-flash",
 } as const
 
 function textContent(content: unknown): string {
