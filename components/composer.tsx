@@ -42,6 +42,15 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [slashIndex, setSlashIndex] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
+  const [isNarrow, setIsNarrow] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mq = window.matchMedia("(max-width: 640px)")
+    const update = () => setIsNarrow(mq.matches)
+    update()
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
+  }, [])
   const slash = matchSlash(value)
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
@@ -249,7 +258,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             value={value}
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder || "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)"}
+            placeholder={placeholder || (isNarrow ? "Hỏi gì đó..." : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")}
             disabled={disabled}
             rows={1}
             className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
