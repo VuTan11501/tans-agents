@@ -24,12 +24,13 @@ import { useEffect, useRef, useState } from "react"
  *
  * @param target  latest fully-received text from useChat
  */
-export function useTypewriter(target: string) {
-  const [displayed, setDisplayed] = useState<string>("")
+export function useTypewriter(target: string, instant = false) {
+  const [displayed, setDisplayed] = useState<string>(instant ? target : "")
   const rafRef = useRef<number | null>(null)
-  const displayedRef = useRef<string>("")
+  const displayedRef = useRef<string>(instant ? target : "")
   const targetRef = useRef<string>(target)
   targetRef.current = target
+  const hasAnimatedRef = useRef<boolean>(!instant)
 
   useEffect(() => {
     // Snap-reset when target shrinks (e.g. new conversation / regenerate).
@@ -38,8 +39,16 @@ export function useTypewriter(target: string) {
       setDisplayed(target)
       return
     }
+    // Skip animation entirely for already-loaded history (instant=true and
+    // we haven't started animating yet).
+    if (instant && !hasAnimatedRef.current) {
+      displayedRef.current = target
+      setDisplayed(target)
+      return
+    }
     if (displayedRef.current.length >= target.length) return
     if (rafRef.current != null) return
+    hasAnimatedRef.current = true
 
     const tick = () => {
       const cur = displayedRef.current
@@ -61,7 +70,7 @@ export function useTypewriter(target: string) {
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
-  }, [target])
+  }, [target, instant])
 
   useEffect(
     () => () => {

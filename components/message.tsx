@@ -69,7 +69,7 @@ export function MessageBubble({
   const citationSources = useMemo(() => extractCitationSources(toolInvocations), [toolInvocations])
   const chartResults = useMemo(() => extractChartResults(toolInvocations), [toolInvocations])
   const messageId = useMemo(() => createMessageId(index, content), [index, content])
-  const displayedContent = useTypewriter(isUser ? "" : content)
+  const displayedContent = useTypewriter(isUser ? "" : content, !isStreaming)
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
   const assistantMessageRef = useRef<HTMLDivElement>(null)
