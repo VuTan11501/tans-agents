@@ -336,6 +336,201 @@ export const runPython = tool({
   execute: async ({ code }) => ({ code }),
 })
 
+
+const FETCH_TIMEOUT_MS = 8000
+
+async function fetchJsonWithTimeout(url: string, init: RequestInit = {}): Promise<any> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
+    return await response.json()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export const runJs = tool({
+  description: "Ch?y JavaScript trong worker sandbox. D?ng ?? test snippet, t?nh to?n, parse data.",
+  parameters: z.object({ code: z.string() }),
+  execute: async ({ code }) => ({ code }),
+})
+
+export const cryptoPrice = tool({
+  description: "L?y gi? crypto hi?n t?i (USD + VND, bi?n ??ng 24h). D?ng CoinGecko free API.",
+  parameters: z.object({ symbol: z.string().describe("Coin id like bitcoin, ethereum") }),
+  execute: async ({ symbol }) => {
+    try {
+      const id = symbol.trim().toLowerCase()
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd,vnd&include_24hr_change=true`
+      const data = await fetchJsonWithTimeout(url, { headers: { Accept: "application/json" } })
+      const coin = data?.[id]
+      if (!coin) return { error: `Kh?ng t?m th?y coin id: ${symbol}` }
+      return {
+        symbol: id,
+        usd: coin.usd,
+        vnd: coin.vnd,
+        change24h: coin.usd_24h_change,
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "crypto price failed") }
+    }
+  },
+})
+
+export const stockPrice = tool({
+  description: "L?y gi? c? phi?u (Yahoo Finance). H? tr? ticker qu?c t? (AAPL, TSLA, VNM.VN, ...).",
+  parameters: z.object({ ticker: z.string() }),
+  execute: async ({ ticker }) => {
+    try {
+      const symbol = ticker.trim().toUpperCase()
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`
+      const data = await fetchJsonWithTimeout(url, { headers: { Accept: "application/json" } })
+      const result = data?.chart?.result?.[0]
+      if (!result) return { error: `Kh?ng t?m th?y ticker: ${ticker}` }
+      const meta = result.meta ?? {}
+      const closes = (result.indicators?.quote?.[0]?.close ?? []).filter((value: unknown): value is number => typeof value === "number")
+      const price = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : closes[closes.length - 1]
+      const previous = typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose : closes[closes.length - 2]
+      const change = typeof price === "number" && typeof previous === "number" ? price - previous : undefined
+      const changePct = typeof change === "number" && previous ? (change / previous) * 100 : undefined
+      return {
+        ticker: symbol,
+        price,
+        change,
+        changePct,
+        currency: meta.currency ?? "",
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "stock price failed") }
+    }
+  },
+})
+
+export const translate = tool({
+  description: "D?ch v?n b?n gi?a c?c ng?n ng? (MyMemory free API).",
+  parameters: z.object({
+    text: z.string(),
+    targetLang: z.string().describe("vi, en, ja, ko, zh, ..."),
+    sourceLang: z.string().optional(),
+  }),
+  execute: async ({ text, targetLang, sourceLang }) => {
+    try {
+      const source = sourceLang?.trim() || "auto"
+      const target = targetLang.trim()
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(`${source}|${target}`)}`
+      const data = await fetchJsonWithTimeout(url, { headers: { Accept: "application/json" } })
+      return {
+        translatedText: data?.responseData?.translatedText ?? "",
+        sourceLang: source,
+        targetLang: target,
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "translate failed") }
+    }
+  },
+})
+
+export const githubQuery = tool({
+  description: "Truy v?n GitHub: repo info, issue/PR ?ang m?, search code, user profile.",
+  parameters: z.object({
+    kind: z.enum(["repo", "issues", "prs", "code", "user"]),
+    query: z.string().describe("owner/repo OR search keywords"),
+  }),
+  execute: async ({ kind, query }) => {
+    try {
+      const headers = {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "tans-agents",
+      }
+      if (kind === "repo") {
+        const repo = parseGitHubRepo(query)
+        if (!repo) return { error: "Repo ph?i c? d?ng owner/repo" }
+        const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}`, { headers })
+        return {
+          name: data.full_name,
+          description: data.description,
+          url: data.html_url,
+          stars: data.stargazers_count,
+          forks: data.forks_count,
+          openIssues: data.open_issues_count,
+          language: data.language,
+          updatedAt: data.updated_at,
+        }
+      }
+      if (kind === "issues") {
+        const repo = parseGitHubRepo(query)
+        if (!repo) return { error: "Issues c?n query d?ng owner/repo" }
+        const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}/issues?state=open&per_page=10`, { headers })
+        return {
+          repo,
+          issues: (Array.isArray(data) ? data : [])
+            .filter((item: any) => !item.pull_request)
+            .slice(0, 10)
+            .map((item: any) => ({ number: item.number, title: item.title, url: item.html_url, author: item.user?.login, labels: (item.labels ?? []).map((label: any) => label.name) })),
+        }
+      }
+      if (kind === "prs") {
+        const repo = parseGitHubRepo(query)
+        if (!repo) return { error: "PRs c?n query d?ng owner/repo" }
+        const data = await fetchJsonWithTimeout(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=10`, { headers })
+        return {
+          repo,
+          prs: (Array.isArray(data) ? data : []).slice(0, 10).map((item: any) => ({ number: item.number, title: item.title, url: item.html_url, author: item.user?.login, branch: item.head?.ref })),
+        }
+      }
+      if (kind === "code") {
+        const data = await fetchJsonWithTimeout(`https://api.github.com/search/code?q=${encodeURIComponent(query)}&per_page=10`, { headers })
+        return {
+          totalCount: data.total_count ?? 0,
+          items: (data.items ?? []).slice(0, 10).map((item: any) => ({ name: item.name, path: item.path, repo: item.repository?.full_name, url: item.html_url })),
+        }
+      }
+      const login = query.trim()
+      const data = await fetchJsonWithTimeout(`https://api.github.com/users/${encodeURIComponent(login)}`, { headers })
+      return {
+        login: data.login,
+        name: data.name,
+        bio: data.bio,
+        url: data.html_url,
+        company: data.company,
+        location: data.location,
+        followers: data.followers,
+        publicRepos: data.public_repos,
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "github query failed") }
+    }
+  },
+})
+
+function parseGitHubRepo(query: string): string | null {
+  const match = query.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/)
+  return match ? `${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}` : null
+}
+
+export const emailCompose = tool({
+  description: "So?n email draft. Tr? v? mailto: link ?? m? client email.",
+  parameters: z.object({
+    to: z.string().optional(),
+    subject: z.string(),
+    body: z.string(),
+    cc: z.string().optional(),
+  }),
+  execute: async ({ to, subject, body, cc }) => {
+    try {
+      const params = new URLSearchParams()
+      params.set("subject", subject)
+      params.set("body", body)
+      if (cc) params.set("cc", cc)
+      return { to, subject, body, cc, mailto: `mailto:${encodeURIComponent(to ?? "")}?${params.toString()}` }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "email compose failed") }
+    }
+  },
+})
+
 export const searchCollection = tool({
   description:
     "Tìm trong tài liệu cá nhân (RAG). Dùng khi user muốn tra cứu PDF/MD/TXT đã upload vào Bộ tài liệu cá nhân.",
@@ -352,7 +547,7 @@ export const searchCollection = tool({
   }),
 })
 
-export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython, searchCollection }
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython, runJs, cryptoPrice, stockPrice, translate, githubQuery, emailCompose, searchCollection }
 export const TOOL_NAMES = Object.keys(agentTools)
 export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   currentTime: "Thời gian",
@@ -365,5 +560,11 @@ export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   chartGen: "Vẽ biểu đồ",
   mermaid: "Vẽ sơ đồ",
   runPython: "Chạy Python",
+  runJs: "Chạy JavaScript",
+  cryptoPrice: "Giá crypto",
+  stockPrice: "Giá cổ phiếu",
+  translate: "Dịch văn bản",
+  githubQuery: "Truy vấn GitHub",
+  emailCompose: "Soạn email",
   searchCollection: "Tìm tài liệu",
 }
