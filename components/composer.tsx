@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { ImageMarkupDialog } from "@/components/image-markup-dialog"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { searchActiveCollection } from "@/lib/collections"
 import { countTokens } from "@/lib/tokens"
@@ -68,6 +69,14 @@ function formatQuotedMessage(quote: string, input: string) {
   return [quotedMarkdown, input.trim()].filter(Boolean).join("\n\n")
 }
 
+function dataUrlToFile(dataUrl: string, original: File) {
+  const [meta, base64] = dataUrl.split(",")
+  const mime = meta.match(/data:(.*);base64/)?.[1] || "image/png"
+  const bytes = Uint8Array.from(atob(base64 ?? ""), (char) => char.charCodeAt(0))
+  const baseName = original.name.replace(/\.[^.]+$/, "") || "image"
+  return new File([bytes], `${baseName}-annotated.png`, { type: mime, lastModified: Date.now() })
+}
+
 export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, messages = [], model, files = [], onFilesChange }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,6 +92,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [isRagPrefetching, setIsRagPrefetching] = useState(false)
   const [markdownPreviewOpen, setMarkdownPreviewOpen] = useState(false)
   const [previewValue, setPreviewValue] = useState(value)
+  const [markupIndex, setMarkupIndex] = useState<number | null>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
     const mq = window.matchMedia("(max-width: 640px)")
@@ -215,6 +225,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
 
   function removeFile(index: number) {
     onFilesChange?.(files.filter((_, i) => i !== index))
+  }
+
+  function saveMarkedImage(dataUrl: string) {
+    if (markupIndex === null) return
+    const original = files[markupIndex]
+    if (!original) return
+    onFilesChange?.(files.map((file, index) => (index === markupIndex ? dataUrlToFile(dataUrl, original) : file)))
+    setMarkupIndex(null)
   }
 
   function handleFileInput(e: ChangeEvent<HTMLInputElement>) {
@@ -393,6 +411,16 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
                     </div>
                   )}
                   <span className="truncate" title={file.name}>{file.name}</span>
+                  {isImage && (
+                    <button
+                      type="button"
+                      onClick={() => setMarkupIndex(index)}
+                      className="rounded-full border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={`Chú thích ảnh ${file.name}`}
+                    >
+                      ✏️ Chú thích ảnh
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeFile(index)}
@@ -522,6 +550,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           )}
         </div>
       </div>
+      <ImageMarkupDialog
+        file={markupIndex === null ? null : files[markupIndex] ?? null}
+        open={markupIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setMarkupIndex(null)
+        }}
+        onSave={saveMarkedImage}
+      />
     </form>
   )
 }
