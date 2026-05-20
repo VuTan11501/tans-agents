@@ -1,4 +1,6 @@
 .env
+.env.local
+.env*.local
 .venv/
 venv/
 __pycache__/
@@ -11,3 +13,12 @@ __pycache__/
 .DS_Store
 .gradio/
 flagged/
+
+# Next.js
+node_modules/
+.next/
+out/
+build/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts

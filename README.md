@@ -1,85 +1,87 @@
----
-title: Tan's AI Agent
-emoji: 🤖
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
-short_description: Multi-provider free AI agent (Gemini/Groq/GitHub Models)
----
-
 # 🤖 Tan's AI Agent
 
-Multi-provider ReAct agent **100% miễn phí** với:
+Multi-provider **free** AI agent with beautiful **shadcn/ui** chat interface.
 
-- 🧠 **Multi LLM**: Google Gemini, Groq (Llama 3.x), GitHub Models (GPT-4o, Phi-3, Mistral)
-- 🛠️ **Tools**: Web search (DuckDuckGo), Calculator, Current time
-- 💬 **Gradio UI** + **FastAPI** REST endpoint
-- 🚀 Deploy 1-click lên HuggingFace Spaces (free vĩnh viễn)
+![Built with Next.js, shadcn/ui, Vercel AI SDK](https://img.shields.io/badge/Next.js-15-black) ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-Latest-zinc) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 🚀 Quick start (local)
+## ✨ Features
+
+- 🎨 **Modern UI** — shadcn/ui (New York style, dark mode) with Tailwind CSS
+- 🧠 **3 free LLM providers** — switch any time from dropdown:
+  - **Google Gemini** (2.5 Flash/Pro, 2.0 Flash) — 60 req/min free
+  - **Groq** (Llama 3.3 70B, Mixtral, Gemma2) — cực nhanh, 30 req/min free
+  - **GitHub Models** (GPT-4o, Phi-3.5, Mistral-Nemo) — free với GH PAT
+- 🛠️ **Agent tools** — Web search (DuckDuckGo), Calculator, Current time
+- 💬 **Streaming responses** with tool-call badges
+- 🌙 Dark mode, Markdown rendering, mobile-friendly
+- 🚀 **One-click deploy to Vercel** (100% free tier)
+
+## 🚀 Deploy to Vercel (5 phút, $0)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/VuTan11501/tans-agents&env=GOOGLE_GENERATIVE_AI_API_KEY&envDescription=Get%20a%20free%20Gemini%20key%20at%20aistudio.google.com)
+
+1. Click button trên ↑
+2. Login Vercel với GitHub (free)
+3. Add env var `GOOGLE_GENERATIVE_AI_API_KEY` (lấy free tại https://aistudio.google.com/app/apikey)
+4. Click **Deploy** → 2 phút sau có URL live `https://tans-agents.vercel.app`
+
+## 💻 Run locally
 
 ```bash
-git clone https://github.com/<your-user>/tans-agents.git
+git clone https://github.com/VuTan11501/tans-agents.git
 cd tans-agents
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -r requirements.txt
-cp .env.example .env             # rồi điền ít nhất 1 API key
-python -m app.main
-# Mở http://localhost:7860
+npm install
+cp .env.local.example .env.local       # rồi điền ít nhất 1 API key
+npm run dev
+# Mở http://localhost:3000
 ```
 
-## 🔑 Lấy API key (free)
+## 🔑 API keys (chọn 1, tất cả miễn phí)
 
-| Provider | Link | Free tier |
+| Provider | Get key | Env var |
 |---|---|---|
-| **Gemini** | https://aistudio.google.com/app/apikey | 60 req/phút |
-| **Groq** | https://console.groq.com/keys | 30 req/phút, cực nhanh |
-| **GitHub Models** | https://github.com/settings/tokens | Dùng PAT (read:user) |
+| **Gemini** (khuyến nghị) | https://aistudio.google.com/app/apikey | `GOOGLE_GENERATIVE_AI_API_KEY` |
+| **Groq** | https://console.groq.com/keys | `GROQ_API_KEY` |
+| **GitHub Models** | https://github.com/settings/tokens | `GITHUB_TOKEN` |
 
-Chỉ cần **1 trong 3** là chạy được. Có cả 3 thì có thể switch trên UI.
-
-## 📡 API endpoints
-
-```bash
-# Health check
-curl http://localhost:7860/health
-
-# Chat
-curl -X POST http://localhost:7860/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"Giờ Tokyo bây giờ?","provider":"gemini"}'
-```
-
-## ☁️ Deploy lên HuggingFace Spaces (free vĩnh viễn)
-
-1. Tạo Space mới tại https://huggingface.co/new-space → SDK = **Docker**
-2. Trong Space **Settings → Variables and secrets**, thêm:
-   - `GOOGLE_API_KEY` (hoặc `GROQ_API_KEY` / `GITHUB_TOKEN`)
-3. Push code:
-   ```bash
-   git remote add hf https://huggingface.co/spaces/<user>/tans-agents
-   git push hf main
-   ```
-4. HF sẽ tự build Dockerfile và serve tại `https://<user>-tans-agents.hf.space`.
-
-Hoặc dùng **GitHub Actions** trong `.github/workflows/sync-to-hf.yml` để auto-sync mỗi khi push lên GitHub (cần thêm `HF_TOKEN` secret).
-
-## 🏗️ Cấu trúc
+## 🏗️ Architecture
 
 ```
 tans-agents/
 ├── app/
-│   ├── llm.py      # Multi-provider factory
-│   ├── tools.py    # Web search, calc, time
-│   ├── agent.py    # ReAct agent
-│   └── main.py     # Gradio UI + FastAPI
-├── Dockerfile
-├── requirements.txt
-└── .github/workflows/sync-to-hf.yml
+│   ├── api/chat/route.ts   # Edge API route, streams via Vercel AI SDK
+│   ├── layout.tsx, page.tsx, globals.css
+├── components/
+│   ├── chat.tsx            # Main chat UI with provider/model switcher
+│   └── ui/                 # shadcn/ui components
+├── lib/
+│   ├── providers.ts        # Multi-LLM config
+│   ├── tools.ts            # webSearch, calculator, currentTime
+│   └── utils.ts            # cn() helper
+├── python/                 # OPTIONAL Python/FastAPI backend (Gradio UI)
+│   ├── app/agent.py, tools.py, llm.py, main.py
+│   ├── Dockerfile          # for HuggingFace Spaces deploy
+│   └── requirements.txt
+├── package.json, tailwind.config.ts, components.json
+└── .github/workflows/ci.yml
+```
+
+## 🎨 Design system
+
+Built with **shadcn/ui** (New York style, zinc base color):
+- `Button`, `Card`, `Input`, `Select`, `ScrollArea`, `Avatar`, `Badge`, `Separator`
+- Radix UI primitives, fully accessible
+- Tailwind CSS với CSS variables cho dark/light theme
+- Lucide icons
+
+## 🐍 Alternative: Python/FastAPI version
+
+Trong `python/` folder có FastAPI + Gradio version, deploy được lên HuggingFace Spaces (cũng free). Xem `python/README.md` (nếu cần) hoặc:
+
+```bash
+cd python
+pip install -r requirements.txt
+python -m app.main
 ```
 
 ## 📜 License
