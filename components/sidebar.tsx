@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CloudSyncButton } from "@/components/cloud-sync-button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -333,6 +334,9 @@ export function Sidebar({
               <Trash2 className="h-3.5 w-3.5" /> Xóa toàn bộ lịch sử
             </Button>
           )}
+          <div className="mt-2 border-t border-border/60 pt-2">
+            <CloudSyncButton />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

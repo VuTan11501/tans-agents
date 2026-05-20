@@ -108,11 +108,17 @@ export function useChatHistory() {
       if (e.key === STORAGE_KEY) setSessions(read())
     }
     const onHistoryChanged = () => setSessions(read())
+    const onCloudPull = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.scope === "sessions") setSessions(read())
+    }
     window.addEventListener("storage", onStorage)
     window.addEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged)
+    window.addEventListener("tans:cloud-pull", onCloudPull as EventListener)
     return () => {
       window.removeEventListener("storage", onStorage)
       window.removeEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged)
+      window.removeEventListener("tans:cloud-pull", onCloudPull as EventListener)
     }
   }, [])
 

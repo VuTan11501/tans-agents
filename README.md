@@ -44,6 +44,29 @@ npm run dev
 | **Groq** | https://console.groq.com/keys | `GROQ_API_KEY` |
 | **GitHub Models** | https://github.com/settings/tokens | `GITHUB_TOKEN` |
 
+## ☁️ Cloud Sync (optional, free)
+
+Đồng bộ chat history + settings cross-device qua GitHub OAuth + Upstash Redis. **Hoàn toàn miễn phí**:
+
+1. **Tạo GitHub OAuth App** tại https://github.com/settings/developers → New OAuth App
+   - Homepage URL: `https://your-deploy.example.com`
+   - Authorization callback URL: `https://your-deploy.example.com/api/auth/callback/github`
+   - Sau khi tạo → copy `Client ID` + Generate `Client Secret`
+2. **Đăng ký Upstash** tại https://console.upstash.com → Create Redis Database (free 10K cmds/day, 256MB)
+   - Copy `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+3. **Set env vars** (Vercel/HF Space secrets):
+   ```
+   GITHUB_CLIENT_ID=...
+   GITHUB_CLIENT_SECRET=...
+   NEXTAUTH_SECRET=...        # openssl rand -base64 32
+   NEXTAUTH_URL=https://your-deploy.example.com
+   UPSTASH_REDIS_REST_URL=...
+   UPSTASH_REDIS_REST_TOKEN=...
+   ```
+4. **Bấm "Đăng nhập để sync"** ở sidebar → đăng nhập GitHub → từ giờ mọi mutation sẽ tự push, focus tab sẽ pull (LWW conflict resolution).
+
+Scope đồng bộ: chat history, model preferences, theme/density, prompts, snippets, memory, voice settings, RAG active collection. **KHÔNG sync**: API keys (per-device), RAG document content (giữ trong IndexedDB local).
+
 ## 🏗️ Architecture
 
 ```
