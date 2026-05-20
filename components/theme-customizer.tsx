@@ -1,0 +1,88 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { Check, RotateCcw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ACCENT_PRESETS, clearAccent, getStoredAccent, saveAccent } from "@/lib/theme"
+import { cn } from "@/lib/utils"
+
+interface ThemeCustomizerProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const [custom, setCustom] = useState("262 83% 58%")
+  const isValid = /^\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s*$/.test(custom)
+
+  useEffect(() => {
+    if (!open) return
+    const stored = getStoredAccent()
+    setSelected(stored)
+    if (stored) setCustom(stored)
+  }, [open])
+
+  if (!open) return null
+
+  function apply(hsl: string) {
+    if (!saveAccent(hsl)) return
+    setSelected(hsl)
+    setCustom(hsl)
+  }
+
+  function reset() {
+    clearAccent()
+    setSelected(null)
+  }
+
+  return (
+    <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">🎨 Màu nhấn</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Chọn màu cho nút chính, viền focus và accent.</p>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={reset}>
+          <RotateCcw className="mr-1 h-3 w-3" /> Reset
+        </Button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-5 gap-2">
+        {ACCENT_PRESETS.map((preset) => {
+          const active = selected === preset.hsl
+          return (
+            <button
+              key={preset.name}
+              type="button"
+              onClick={() => apply(preset.hsl)}
+              className={cn(
+                "flex h-9 items-center justify-center rounded-full border shadow-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+              )}
+              style={{ backgroundColor: `hsl(${preset.hsl})` }}
+              aria-label={preset.label}
+              title={preset.label}
+            >
+              {active && <Check className="h-4 w-4 text-white drop-shadow" />}
+            </button>
+          )
+        })}
+      </div>
+
+      <label className="mt-4 block space-y-2">
+        <span className="text-xs font-medium">HSL tuỳ chỉnh</span>
+        <div className="flex gap-2">
+          <Input value={custom} onChange={(event) => setCustom(event.target.value)} placeholder="262 83% 58%" className="h-9 text-xs" />
+          <Button type="button" size="sm" disabled={!isValid} onClick={() => apply(custom)}>
+            Áp dụng
+          </Button>
+        </div>
+      </label>
+      <button className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:underline" type="button" onClick={() => onOpenChange(false)}>
+        Đóng
+      </button>
+    </div>
+  )
+}

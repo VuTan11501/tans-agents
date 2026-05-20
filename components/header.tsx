@@ -12,9 +12,11 @@ import {
   Key,
   Mic,
   MoreHorizontal,
+  Palette,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
+import { ThemeCustomizer } from "@/components/theme-customizer"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +66,7 @@ export function Header({
   clearUserKeys,
 }: HeaderProps) {
   const [apiKeysOpen, setApiKeysOpen] = useState(false)
+  const [themeOpen, setThemeOpen] = useState(false)
   const providerLabel = PROVIDERS[provider].label
   const isAutoModel = model === "auto"
   const hasKeys = hasAnyUserKey(userKeys)
@@ -159,7 +162,7 @@ export function Header({
         </div>
 
         {/* Right: action icons (visible on ≥md), overflow menu (<md), new chat */}
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="relative flex shrink-0 items-center gap-1">
           {/* Desktop-only inline icon buttons */}
           <div className="hidden items-center gap-1 md:flex">
             <IconBtn label="Bộ nhớ" onClick={onOpenMemory}>
@@ -170,6 +173,9 @@ export function Header({
             </IconBtn>
             <IconBtn label="Chế độ giọng nói" onClick={toggleVoiceMode}>
               <Mic className="h-3.5 w-3.5" />
+            </IconBtn>
+            <IconBtn label="Tuỳ chỉnh màu" onClick={() => setThemeOpen((open) => !open)}>
+              <Palette className="h-3.5 w-3.5" />
             </IconBtn>
             <IconBtn label="Error log" onClick={onOpenErrorLog}>
               <Bug className="h-3.5 w-3.5" />
@@ -221,6 +227,9 @@ export function Header({
                 <DropdownMenuItem onClick={toggleVoiceMode}>
                   <Mic className="mr-2 h-4 w-4" /> Chế độ giọng nói
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setThemeOpen(true)}>
+                  <Palette className="mr-2 h-4 w-4" /> Tuỳ chỉnh màu
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onOpenErrorLog}>
                   <Bug className="mr-2 h-4 w-4" /> Error log
                 </DropdownMenuItem>
@@ -252,6 +261,7 @@ export function Header({
             </TooltipTrigger>
             <TooltipContent side="bottom">Bắt đầu cuộc trò chuyện mới</TooltipContent>
           </Tooltip>
+          <ThemeCustomizer open={themeOpen} onOpenChange={setThemeOpen} />
         </div>
       </div>
       <ApiKeysDialog
