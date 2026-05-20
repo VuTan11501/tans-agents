@@ -2,16 +2,20 @@
 
 import { useEffect, useState } from "react"
 import * as Dialog from "@radix-ui/react-dialog"
-import { FileUp, FolderOpen, Plus, Search, Trash2, X } from "lucide-react"
+import { Check, FileUp, FolderOpen, Plus, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  clearActiveCollectionId,
   countChunks,
   createCollection,
   deleteCollection,
+  getActiveCollectionId,
   ingestFiles,
   listCollections,
+  RAG_ACTIVE_COLLECTION_EVENT,
   searchCollectionLocal,
+  setActiveCollectionId,
   type CollectionSearchResult,
   type DocumentCollection,
 } from "@/lib/collections"
@@ -25,6 +29,7 @@ interface CollectionsDialogProps {
 export function CollectionsDialog({ open, onOpenChange }: CollectionsDialogProps) {
   const [collections, setCollections] = useState<DocumentCollection[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<CollectionSearchResult[]>([])
@@ -37,10 +42,27 @@ export function CollectionsDialog({ open, onOpenChange }: CollectionsDialogProps
     refresh()
   }, [open])
 
+  useEffect(() => {
+    function handleActiveChange() {
+      setActiveId(getActiveCollectionId())
+    }
+    handleActiveChange()
+    window.addEventListener(RAG_ACTIVE_COLLECTION_EVENT, handleActiveChange)
+    window.addEventListener("storage", handleActiveChange)
+    return () => {
+      window.removeEventListener(RAG_ACTIVE_COLLECTION_EVENT, handleActiveChange)
+      window.removeEventListener("storage", handleActiveChange)
+    }
+  }, [])
+
   const selected = collections.find((collection) => collection.id === selectedId) ?? collections[0]
 
   async function refresh() {
     const next = await listCollections()
+    const storedActiveId = getActiveCollectionId()
+    const validActiveId = next.some((collection) => collection.id === storedActiveId) ? storedActiveId : null
+    if (storedActiveId && !validActiveId) clearActiveCollectionId()
+    setActiveId(validActiveId)
     setCollections(next)
     setSelectedId((current) => current ?? next[0]?.id ?? null)
     const counts: Record<string, number> = {}
@@ -61,8 +83,14 @@ export function CollectionsDialog({ open, onOpenChange }: CollectionsDialogProps
   async function handleDelete(collectionId: string) {
     await deleteCollection(collectionId)
     if (selectedId === collectionId) setSelectedId(null)
+    if (activeId === collectionId) setActiveId(null)
     setResults([])
     await refresh()
+  }
+
+  function handleSetActive(collectionId: string) {
+    setActiveCollectionId(collectionId)
+    setActiveId(collectionId)
   }
 
   async function handleUpload(files: FileList | null) {
@@ -129,8 +157,29 @@ export function CollectionsDialog({ open, onOpenChange }: CollectionsDialogProps
                   >
                     <FolderOpen className="mt-0.5 h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{collection.name}</span>
+                      <span className="flex items-center gap-1 truncate font-medium">
+                        {collection.name}
+                        {activeId === collection.id && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                      </span>
                       <span className="text-xs text-muted-foreground">{chunkCounts[collection.id] ?? 0} chunk</span>
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        "rounded px-2 py-1 text-[10px] font-medium hover:bg-background",
+                        activeId === collection.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleSetActive(collection.id)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") handleSetActive(collection.id)
+                      }}
+                      aria-label="Đặt làm active"
+                    >
+                      {activeId === collection.id ? "Active" : "Đặt làm active"}
                     </span>
                     <span
                       role="button"

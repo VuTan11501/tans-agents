@@ -533,17 +533,13 @@ export const emailCompose = tool({
 
 export const searchCollection = tool({
   description:
-    "Tìm trong tài liệu cá nhân (RAG). Dùng khi user muốn tra cứu PDF/MD/TXT đã upload vào Bộ tài liệu cá nhân.",
+    "Stub RAG: server không đọc được IndexedDB. Context từ collection active sẽ được client tự động chèn trước khi gửi tin nhắn.",
   parameters: z.object({
-    query: z.string().describe("Câu hỏi hoặc từ khoá cần tìm"),
-    collectionId: z.string().describe("ID collection trong IndexedDB"),
-    topK: z.number().int().min(1).max(10).optional().default(5),
+    query: z.string().optional().describe("Câu hỏi hoặc từ khoá cần tìm"),
   }),
-  execute: async ({ query, collectionId, topK }) => ({
+  execute: async ({ query }) => ({
     query,
-    collectionId,
-    topK,
-    note: "Bộ tài liệu cá nhân được lưu trong IndexedDB của trình duyệt, nên server chat không thể đọc trực tiếp. Hãy mở Bộ tài liệu trên header để tìm kiếm cục bộ.",
+    note: "Hãy dùng thiết lập collection active trong UI; ngữ cảnh RAG sẽ được tự động chèn từ trình duyệt trước khi gửi.",
   }),
 })
 

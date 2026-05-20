@@ -28,9 +28,33 @@ const CHUNK_SIZE = 900
 const CHUNK_OVERLAP = 140
 const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2"
 const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2"
+export const RAG_ACTIVE_COLLECTION_KEY = "tans:rag:activeCollection"
+export const RAG_ACTIVE_COLLECTION_EVENT = "tans:rag:activeCollectionChanged"
 
 type FeatureExtractor = (text: string, options: { pooling: "mean"; normalize: boolean }) => Promise<{ data: Float32Array | number[] }>
 let extractorPromise: Promise<FeatureExtractor> | null = null
+
+export interface ActiveCollectionSearchResult {
+  collection: DocumentCollection
+  results: CollectionSearchResult[]
+}
+
+export function getActiveCollectionId(): string | null {
+  if (typeof window === "undefined") return null
+  return window.localStorage.getItem(RAG_ACTIVE_COLLECTION_KEY)
+}
+
+export function setActiveCollectionId(collectionId: string): void {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(RAG_ACTIVE_COLLECTION_KEY, collectionId)
+  notifyActiveCollectionChanged()
+}
+
+export function clearActiveCollectionId(): void {
+  if (typeof window === "undefined") return
+  window.localStorage.removeItem(RAG_ACTIVE_COLLECTION_KEY)
+  notifyActiveCollectionChanged()
+}
 
 export async function listCollections(): Promise<DocumentCollection[]> {
   const db = await openCollectionsDb()
@@ -52,6 +76,7 @@ export async function deleteCollection(collectionId: string): Promise<void> {
   const keys = await requestToPromise<IDBValidKey[]>(index.getAllKeys(collectionId))
   for (const key of keys) tx.objectStore("chunks").delete(key)
   await transactionDone(tx)
+  if (getActiveCollectionId() === collectionId) clearActiveCollectionId()
 }
 
 export async function countChunks(collectionId: string): Promise<number> {
@@ -92,6 +117,19 @@ export async function searchCollectionLocal({
     .map((chunk) => ({ text: chunk.text, source: chunk.source, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, Math.max(1, topK))
+}
+
+export async function searchActiveCollection(query: string, topK = 5): Promise<ActiveCollectionSearchResult | null> {
+  const activeId = getActiveCollectionId()
+  if (!activeId) return null
+  const collections = await listCollections()
+  const collection = collections.find((item) => item.id === activeId)
+  if (!collection) {
+    clearActiveCollectionId()
+    return null
+  }
+  const results = await searchCollectionLocal({ query, collectionId: activeId, topK: Math.min(Math.max(1, topK), 5) })
+  return { collection, results }
 }
 
 async function addChunk(input: { collectionId: string; text: string; source: string }) {
@@ -150,6 +188,10 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   }
   if (!normA || !normB) return 0
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+function notifyActiveCollectionChanged() {
+  window.dispatchEvent(new Event(RAG_ACTIVE_COLLECTION_EVENT))
 }
 
 function openCollectionsDb(): Promise<IDBDatabase> {

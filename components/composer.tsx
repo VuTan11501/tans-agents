@@ -2,11 +2,13 @@
 import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowUp, Eye, FileText, Mic, Paperclip, Square, X } from "lucide-react"
 import { MarkdownPreview } from "@/components/markdown-preview"
+import { RagPicker } from "@/components/rag-picker"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
+import { searchActiveCollection } from "@/lib/collections"
 import { countTokens } from "@/lib/tokens"
 import { useSpeechRecognition } from "@/hooks/use-voice"
 import { cn } from "@/lib/utils"
@@ -34,6 +36,7 @@ interface ComposerProps {
 const MAX_FILES = 4
 const ACCEPTED_FILE_TYPES = "image/*,application/pdf,text/*"
 const PREVIEW_STORAGE_KEY = "tans:composer:preview"
+const RAG_CONTEXT_LIMIT = 2000
 const DEFAULT_CONTEXT_LIMIT = 128_000
 const CONTEXT_LIMITS: Record<string, number> = {
   auto: DEFAULT_CONTEXT_LIMIT,
@@ -76,7 +79,8 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const [isNarrow, setIsNarrow] = useState(false)
   const [quotedText, setQuotedText] = useState<string | null>(null)
-  const [pendingQuotedSubmit, setPendingQuotedSubmit] = useState<string | null>(null)
+  const [pendingSubmitMessage, setPendingSubmitMessage] = useState<string | null>(null)
+  const [isRagPrefetching, setIsRagPrefetching] = useState(false)
   const [markdownPreviewOpen, setMarkdownPreviewOpen] = useState(false)
   const [previewValue, setPreviewValue] = useState(value)
   useEffect(() => {
@@ -106,7 +110,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
   const composedValue = quotedText ? formatQuotedMessage(quotedText, value) : value
-  const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled
+  const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled && !isRagPrefetching
   const contextUsage = useMemo(() => {
     const used = messages.reduce((sum, message) => {
       return sum + countTokens(typeof message.content === "string" ? message.content : "")
@@ -149,10 +153,10 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   }, [])
 
   useEffect(() => {
-    if (!pendingQuotedSubmit || value !== pendingQuotedSubmit) return
-    setPendingQuotedSubmit(null)
+    if (!pendingSubmitMessage || value !== pendingSubmitMessage) return
+    setPendingSubmitMessage(null)
     onSubmit({ preventDefault() {} } as FormEvent)
-  }, [onSubmit, pendingQuotedSubmit, value])
+  }, [onSubmit, pendingSubmitMessage, value])
 
   useEffect(() => {
     const urls: Record<string, string> = {}
@@ -236,20 +240,44 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     addFiles(Array.from(e.dataTransfer.files ?? []))
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function withRagContext(originalMessage: string) {
+    if (!originalMessage.trim()) return originalMessage
+    setIsRagPrefetching(true)
+    try {
+      const rag = await searchActiveCollection(originalMessage, 5)
+      if (!rag || rag.results.length === 0) return originalMessage
+      const context = rag.results
+        .map((chunk, index) => `[${index + 1}] ${chunk.text}\n(nguồn: ${chunk.source})`)
+        .join("\n\n")
+        .slice(0, RAG_CONTEXT_LIMIT)
+        .trim()
+      if (!context) return originalMessage
+      return `📚 Tham khảo từ tài liệu "${rag.collection.name}":\n${context}\n\nCâu hỏi: ${originalMessage}`
+    } catch {
+      return originalMessage
+    } finally {
+      setIsRagPrefetching(false)
+    }
+  }
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!quotedText) {
-      onSubmit(e)
+    if (isRagPrefetching) return
+
+    const baseMessage = quotedText ? formatQuotedMessage(quotedText, value) : value
+    if (!baseMessage.trim() && files.length === 0) return
+
+    const finalMessage = await withRagContext(baseMessage)
+    setQuotedText(null)
+    setSlashOpen(false)
+
+    if (finalMessage !== value) {
+      setPendingSubmitMessage(finalMessage)
+      onChange(finalMessage)
       return
     }
 
-    const finalMessage = formatQuotedMessage(quotedText, value)
-    if (!finalMessage.trim() && files.length === 0) return
-
-    setPendingQuotedSubmit(finalMessage)
-    setQuotedText(null)
-    setSlashOpen(false)
-    onChange(finalMessage)
+    onSubmit(e)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -452,6 +480,8 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             </Button>
           )}
 
+          <RagPicker disabled={disabled || isRagPrefetching} />
+
           <Button
             type="button"
             size="icon"
@@ -479,6 +509,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
               type="submit"
               size="icon"
               disabled={!canSubmit}
+              title={isRagPrefetching ? "Đang lấy ngữ cảnh RAG..." : "Gửi"}
               className={cn(
                 "send-glow h-9 w-9 shrink-0 rounded-full",
                 canSubmit
