@@ -154,7 +154,7 @@ export function MessageBubble({
                   setEditing(false)
                 }}
               >
-                Lưu & rẽ nhánh
+                Gửi
               </Button>
             </div>
           </div>

@@ -14,16 +14,16 @@ interface ToolCallProps {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  webSearch: "T?m ki?m web",
-  calculator: "M?y t?nh",
-  currentTime: "Th?i gian hi?n t?i",
-  runPython: "Ch?y Python",
-  runJs: "Ch?y JavaScript",
-  cryptoPrice: "Gi? crypto",
-  stockPrice: "Gi? c? phi?u",
-  translate: "D?ch v?n b?n",
-  githubQuery: "Truy v?n GitHub",
-  emailCompose: "So?n email",
+  webSearch: "Tìm kiếm web",
+  calculator: "Máy tính",
+  currentTime: "Thời gian hiện tại",
+  runPython: "Chạy Python",
+  runJs: "Chạy JavaScript",
+  cryptoPrice: "Giá crypto",
+  stockPrice: "Giá cổ phiếu",
+  translate: "Dịch văn bản",
+  githubQuery: "Truy vấn GitHub",
+  emailCompose: "Soạn email",
 }
 
 export function ToolCall({ name, state, args, result }: ToolCallProps) {
@@ -128,7 +128,7 @@ function PriceCard({ kind, data }: { kind: string; data: any }) {
     <div className="w-full rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{isCrypto ? "Gi? crypto" : "Gi? c? phi?u"}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{isCrypto ? "Giá crypto" : "Giá cổ phiếu"}</div>
           <div className="mt-1 text-lg font-semibold text-foreground">{title}</div>
           <div className="mt-2 text-2xl font-bold text-foreground">{price}</div>
           {isCrypto && <div className="mt-1 text-sm text-muted-foreground"> {formatCurrency(data.vnd, "VND")}</div>}
@@ -139,7 +139,7 @@ function PriceCard({ kind, data }: { kind: string; data: any }) {
         </div>
       </div>
       {!isCrypto && Number.isFinite(Number(data.change)) && (
-        <div className="mt-2 text-sm text-muted-foreground">Thay ??i: {Number(data.change).toFixed(2)} {data.currency}</div>
+        <div className="mt-2 text-sm text-muted-foreground">Thay đổi: {Number(data.change).toFixed(2)} {data.currency}</div>
       )}
     </div>
   )
@@ -149,7 +149,7 @@ function TranslateCard({ data, originalText }: { data: any; originalText?: strin
   return (
     <div className="w-full rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        D?ch v?n b?n  {data.sourceLang ?? "auto"}  {data.targetLang ?? "?"}
+        Dịch văn bản · {data.sourceLang ?? "auto"} → {data.targetLang ?? "?"}
       </div>
       {originalText && <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">{originalText}</div>}
       <div className="mt-3 rounded-lg bg-emerald-500/10 p-3 text-sm font-medium text-foreground">{data.translatedText}</div>
@@ -161,10 +161,10 @@ function EmailCard({ data }: { data: any }) {
   return (
     <div className="w-full rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-foreground"> B?n nh?p email</div>
+        <div className="text-sm font-semibold text-foreground">📧 Bản nháp email</div>
         <a href={data.mailto} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium transition hover:bg-muted">
           <Mail className="h-3.5 w-3.5" />
-          M? trong app email
+          Mở trong app email
         </a>
       </div>
       <div className="mt-3 space-y-2 text-sm">
@@ -181,7 +181,7 @@ function GitHubCard({ data }: { data: any }) {
   const items = data.items ?? data.issues ?? data.prs
   return (
     <div className="w-full rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm">
-      <div className="text-sm font-semibold text-foreground"> K?t qu? GitHub</div>
+      <div className="text-sm font-semibold text-foreground">🐙 Kết quả GitHub</div>
       {data.name || data.login ? (
         <div className="mt-3 space-y-1 text-sm">
           <a href={data.url} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">{data.name ?? data.login}</a>
@@ -193,7 +193,7 @@ function GitHubCard({ data }: { data: any }) {
         </div>
       ) : Array.isArray(items) ? (
         <div className="mt-3 space-y-2">
-          {items.length === 0 && <div className="text-sm text-muted-foreground">Kh?ng c? k?t qu?.</div>}
+          {items.length === 0 && <div className="text-sm text-muted-foreground">Không có kết quả.</div>}
           {items.map((item: any, index: number) => (
             <a key={`${item.url}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="block rounded-lg bg-muted/40 p-3 text-sm transition hover:bg-muted/60">
               <div className="font-medium text-foreground">{item.number ? `#${item.number} ` : ""}{item.title ?? item.name}</div>
