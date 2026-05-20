@@ -129,7 +129,10 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
     return { used, limit, pct, barPct: Math.min(100, Math.max(0, pct)) }
   }, [messages, model, composedValue])
-  const contextBarClass = contextUsage.pct < 50 ? "bg-primary" : contextUsage.pct <= 80 ? "bg-amber-500" : "bg-red-500"
+  const contextRingColor = contextUsage.pct < 50 ? "text-primary" : contextUsage.pct <= 80 ? "text-amber-500" : "text-red-500"
+  const RING_RADIUS = 8
+  const RING_CIRC = 2 * Math.PI * RING_RADIUS
+  const ringOffset = RING_CIRC * (1 - contextUsage.barPct / 100)
 
   // Auto-grow
   useEffect(() => {
@@ -370,16 +373,34 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           </div>
         )}
 
-        <div className="mb-2 flex items-center gap-2 pr-2">
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              style={{ width: `${contextUsage.barPct}%` }}
-              className={cn("h-full rounded-full transition-all", contextBarClass)}
-            />
-          </div>
+        <div className="mb-2 flex items-center justify-end gap-2 pr-2">
           <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
-            Đang dùng {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} token ({contextUsage.pct}%)
+            {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} ({contextUsage.pct}%)
           </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={cn("relative inline-flex h-5 w-5 items-center justify-center", contextRingColor)}>
+                <svg className="h-5 w-5 -rotate-90" viewBox="0 0 20 20" aria-hidden>
+                  <circle cx="10" cy="10" r={RING_RADIUS} fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
+                  <circle
+                    cx="10"
+                    cy="10"
+                    r={RING_RADIUS}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeDasharray={RING_CIRC}
+                    strokeDashoffset={ringOffset}
+                    style={{ transition: "stroke-dashoffset 200ms ease-out" }}
+                  />
+                </svg>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Context: {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} token ({contextUsage.pct}%)
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {quotedText && (
@@ -451,7 +472,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             {markdownPreviewOpen && <MarkdownPreview value={previewValue} className="max-h-60" />}
           </div>
 
-          <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
+          <div className="absolute bottom-1 left-4 hidden gap-1 sm:flex" title="Số token ước tính (cl100k)">
             <Badge variant="outline" className="text-[10px] font-mono">
               {countTokens(composedValue)} tokens
             </Badge>
