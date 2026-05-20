@@ -103,6 +103,8 @@ export function Chat() {
   const [ragActiveCollectionId, setRagActiveCollectionId] = useState<string | null>(() => getActiveCollectionId())
   const chatRootRef = useRef<HTMLDivElement>(null)
   const scrollEndRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  const [stickToBottom, setStickToBottom] = useState(true)
   const skipNextPersistRef = useRef(false)
   const messagesRef = useRef<any[]>([])
   const abStreamRef = useRef<AbStreamHandle | null>(null)
@@ -240,12 +242,26 @@ export function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, sessionId, provider, model, persona])
 
-  // Auto-scroll
+  // Auto-scroll: chỉ tự cuộn khi user đang ở gần đáy (stickToBottom).
+  // Nếu user cuộn lên đọc nội dung cũ giữa lúc streaming → KHÔNG kéo họ xuống.
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
   const streamingLen = lastAssistant?.content?.length ?? 0
   useEffect(() => {
-    scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [messages.length, streamingLen])
+    const main = mainRef.current
+    if (!main) return
+    const onScroll = () => {
+      const dist = main.scrollHeight - main.scrollTop - main.clientHeight
+      setStickToBottom(dist < 80)
+    }
+    main.addEventListener("scroll", onScroll, { passive: true })
+    return () => main.removeEventListener("scroll", onScroll)
+  }, [])
+  useEffect(() => {
+    if (!stickToBottom) return
+    // Khi message-list dài thêm hoặc đang stream → giữ ở đáy. Dùng "auto" thay vì "smooth"
+    // để không gây hiệu ứng nhảy giật mỗi token đến.
+    scrollEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" })
+  }, [messages.length, streamingLen, stickToBottom])
 
   useEffect(() => {
     if (!pendingFirstMessage) return
@@ -588,6 +604,8 @@ export function Chat() {
     async (e: FormEvent) => {
       e.preventDefault()
       if (isLoading || isAbLoading) return
+      // User vừa gửi tin nhắn mới → luôn kéo xuống xem câu trả lời.
+      setStickToBottom(true)
 
       const textBlocks: string[] = []
       const attachments: any[] = []
@@ -686,7 +704,7 @@ export function Chat() {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
         <div className={cn("mx-auto px-4", activeAb ? "max-w-5xl" : "max-w-3xl")}>
           <div className="pt-3">
             <AbToggle
