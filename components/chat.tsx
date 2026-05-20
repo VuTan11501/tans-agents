@@ -19,6 +19,7 @@ import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
 import { useHotkeys } from "@/hooks/use-hotkeys"
 import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
 import { useMemory } from "@/hooks/use-memory"
+import { useUserKeys } from "@/hooks/use-user-keys"
 import { logError } from "@/lib/error-log"
 import type { PromptItem } from "@/hooks/use-prompts"
 
@@ -51,6 +52,7 @@ export function Chat() {
   const messagesRef = useRef<any[]>([])
 
   const { memory, setAbout, addFact, removeFact, clearAll } = useMemory()
+  const { keys: userKeys, setKey: setUserKey, clearAll: clearUserKeys } = useUserKeys()
   const personaSystemPrompt = useMemo(
     () => buildSystemPrompt({ persona, memory }),
     [persona, memory]
@@ -75,7 +77,7 @@ export function Chat() {
     append,
   } = useChat({
     api: "/api/chat",
-    body: { provider, model, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+    body: { provider, model, userKeys, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
     onError: (err) => {
       const lastMessage = [...messagesRef.current]
         .reverse()
@@ -215,6 +217,47 @@ export function Chat() {
     [history, setMessages]
   )
 
+  const handleEditMessage = useCallback(
+    (index: number, newContent: string) => {
+      const original = messages[index]
+      const trimmed = newContent.trim()
+      if (!original || original.role !== "user" || !trimmed) return
+      if (isLoading) stop()
+
+      const branchId = newId()
+      const beforeEdited = messages.slice(0, index)
+      const editedMessage = { ...original, id: newId(), content: trimmed, parts: undefined as any }
+      const branchMessages = [...beforeEdited, editedMessage]
+
+      history.upsert({
+        id: branchId,
+        title: deriveTitle(branchMessages),
+        messages: branchMessages,
+        provider,
+        model,
+        persona,
+        parentId: sessionId,
+        tags: currentSession?.tags,
+        enabledTools: currentSession?.enabledTools,
+      } as any)
+
+      skipNextPersistRef.current = true
+      setAttachedFiles([])
+      setPendingFirstMessage(null)
+      setInput("")
+      setSessionId(branchId)
+      setMessages(beforeEdited as any)
+      setTimeout(() => {
+        void append({
+          role: "user",
+          content: trimmed,
+          experimental_attachments: (original as any).experimental_attachments,
+        } as any)
+      }, 0)
+    },
+    [append, currentSession?.enabledTools, currentSession?.tags, history, isLoading, messages, model, persona, provider, sessionId, setInput, setMessages, stop]
+  )
+
   const handleDeleteSession = useCallback(
     (id: string) => {
       history.remove(id)
@@ -317,6 +360,9 @@ export function Chat() {
         onOpenMemory={() => setMemoryOpen(true)}
         onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
         onOpenErrorLog={() => setErrorLogOpen(true)}
+        userKeys={userKeys}
+        setUserKey={setUserKey}
+        clearUserKeys={clearUserKeys}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -334,6 +380,7 @@ export function Chat() {
                     role={m.role}
                     content={m.content}
                     parts={m.parts}
+                    index={i}
                     isStreaming={
                       isLoading && i === messages.length - 1 && m.role === "assistant"
                     }
@@ -349,18 +396,7 @@ export function Chat() {
                         : undefined
                     }
                     onRegenerate={() => reload()}
-                    onEditUser={
-                      m.role === "user"
-                        ? (newContent) => {
-                            const truncated = messages.slice(0, i)
-                            setMessages([
-                              ...truncated,
-                              { ...m, content: newContent, parts: undefined as any },
-                            ])
-                            setTimeout(() => reload(), 0)
-                          }
-                        : undefined
-                    }
+                    onEdit={m.role === "user" ? handleEditMessage : undefined}
                   />
                 )
               })}

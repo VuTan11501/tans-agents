@@ -26,12 +26,12 @@ export function PersonaPicker({ value, onChange }: PersonaPickerProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
+          className="h-8 shrink-0 gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
           aria-label="Chọn persona"
         >
           <span>{current.emoji}</span>
-          <span className="hidden sm:inline">{current.label}</span>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          <span className="hidden max-w-[88px] truncate sm:inline">{current.label}</span>
+          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="center" className="w-56">

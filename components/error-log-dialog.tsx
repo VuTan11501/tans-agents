@@ -49,7 +49,8 @@ export function ErrorLogDialog({ open, onOpenChange }: ErrorLogDialogProps) {
             <Badge variant="outline">{errors.length} lỗi</Badge>
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="sm" onClick={handleCopy} disabled={errors.length === 0} className="gap-2">
-                <Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy bug report"}
+                <Copy className="h-3.5 w-3.5" />
+                <span role="status" aria-live="polite">{copied ? "Copied" : "Copy bug report"}</span>
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={handleClear} disabled={errors.length === 0} className="gap-2">
                 <Trash2 className="h-3.5 w-3.5" /> Clear
@@ -80,7 +81,10 @@ export function ErrorLogDialog({ open, onOpenChange }: ErrorLogDialogProps) {
             )}
           </div>
 
-          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <Dialog.Close
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Đóng nhật ký lỗi"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
         </Dialog.Content>

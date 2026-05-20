@@ -12,6 +12,13 @@ export interface ChatSession {
   pinned?: boolean
   tags?: string[]
   enabledTools?: string[]
+  parentId?: string
+  branches?: string[]
+}
+
+export interface BranchTree {
+  session: ChatSession
+  children: BranchTree[]
 }
 
 const STORAGE_KEY = "tans-agents:chat-history-v1"
@@ -120,7 +127,14 @@ export function useChatHistory() {
           createdAt: existing?.createdAt ?? session.createdAt ?? now,
           updatedAt: now,
         }
-        const next = [merged, ...prev.filter((s) => s.id !== session.id)]
+        let next = [merged, ...prev.filter((s) => s.id !== session.id)]
+        if (session.parentId && !existing) {
+          next = next.map((s) =>
+            s.id === session.parentId
+              ? { ...s, branches: Array.from(new Set([...(s.branches ?? []), session.id])) }
+              : s
+          )
+        }
         write(next)
         return next
       })
@@ -130,7 +144,13 @@ export function useChatHistory() {
 
   const remove = useCallback((id: string) => {
     setSessions((prev) => {
-      const next = prev.filter((s) => s.id !== id)
+      const next = prev
+        .filter((s) => s.id !== id)
+        .map((s) =>
+          s.branches?.includes(id)
+            ? { ...s, branches: s.branches.filter((branchId) => branchId !== id) }
+            : s
+        )
       write(next)
       return next
     })
@@ -157,8 +177,9 @@ export function useChatHistory() {
       if (!orig) return prev
       newId =
         Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+      const { parentId: _parentId, branches: _branches, ...sessionCopy } = orig
       const copy: ChatSession = {
-        ...orig,
+        ...sessionCopy,
         id: newId,
         title: orig.title + " (bản sao)",
         createdAt: Date.now(),
@@ -198,5 +219,22 @@ export function useChatHistory() {
 
   const get = useCallback((id: string) => sessions.find((s) => s.id === id), [sessions])
 
-  return { sessions, upsert, remove, rename, duplicate, clearAll, togglePin, setTags, setEnabledTools, get }
+  const getBranchTree = useCallback(
+    (rootId: string): BranchTree | null => {
+      const byId = new Map(sessions.map((s) => [s.id, s]))
+      const build = (id: string): BranchTree | null => {
+        const session = byId.get(id)
+        if (!session) return null
+        const branchIds = session.branches ?? sessions.filter((s) => s.parentId === id).map((s) => s.id)
+        return {
+          session,
+          children: branchIds.map(build).filter((tree): tree is BranchTree => !!tree),
+        }
+      }
+      return build(rootId)
+    },
+    [sessions]
+  )
+
+  return { sessions, upsert, remove, rename, duplicate, clearAll, togglePin, setTags, setEnabledTools, get, getBranchTree }
 }

@@ -14,10 +14,11 @@ interface MessageProps {
   role: string
   content: string
   parts?: any[]
+  index?: number
   isStreaming?: boolean
   isLastAssistant?: boolean
   onRegenerate?: () => void
-  onEditUser?: (newContent: string) => void
+  onEdit?: (index: number, newContent: string) => void
   onContinue?: () => void
   wasTruncated?: boolean
 }
@@ -34,10 +35,11 @@ export function MessageBubble({
   role,
   content,
   parts,
+  index = 0,
   isStreaming,
   isLastAssistant,
   onRegenerate,
-  onEditUser,
+  onEdit,
   onContinue,
   wasTruncated,
 }: MessageProps) {
@@ -80,11 +82,11 @@ export function MessageBubble({
                 className="h-8 gap-1.5 px-3 text-xs"
                 disabled={!draft.trim() || draft === content}
                 onClick={() => {
-                  onEditUser?.(draft)
+                  onEdit?.(index, draft)
                   setEditing(false)
                 }}
               >
-                Gửi lại
+                Lưu & rẽ nhánh
               </Button>
             </div>
           </div>
@@ -99,7 +101,7 @@ export function MessageBubble({
               <p className="whitespace-pre-wrap">{content}</p>
             </div>
             <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-              {onEditUser && (
+              {onEdit && (
                 <ActionIcon
                   label="Chỉnh sửa"
                   onClick={() => {

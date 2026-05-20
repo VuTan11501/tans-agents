@@ -75,9 +75,9 @@ export function MemoryDialog({
                     }
                   }}
                   placeholder="Thêm một sự thật..."
-                  className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <Button type="button" size="sm" onClick={handleAddFact} disabled={!draftFact.trim()}>
+                <Button type="button" size="sm" onClick={handleAddFact} disabled={!draftFact.trim()} aria-label="Thêm sự thật">
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -108,7 +108,10 @@ export function MemoryDialog({
             </div>
           </div>
 
-          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <Dialog.Close
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Đóng bộ nhớ"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
         </Dialog.Content>

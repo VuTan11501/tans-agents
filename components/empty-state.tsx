@@ -40,7 +40,7 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
             key={i}
             onClick={() => onPick(s.text)}
             className={cn(
-              "group flex items-start gap-3 rounded-xl border border-border/60 bg-card/30 p-4 text-left transition-all hover:border-border hover:bg-card hover:shadow-md"
+              "group flex items-start gap-3 rounded-xl border border-border/60 bg-card/30 p-4 text-left transition-all hover:border-border hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             )}
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-foreground/10 group-hover:text-foreground">

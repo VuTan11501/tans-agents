@@ -4,6 +4,7 @@ import { createGroq } from "@ai-sdk/groq"
 import { createOpenAI } from "@ai-sdk/openai"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import type { UserKeys } from "@/lib/user-keys"
 
 export const runtime = "edge"
 export const maxDuration = 30
@@ -13,19 +14,28 @@ const SYSTEM_PROMPT =
   "Khi cần thông tin thực tế hãy dùng tool webSearch. Khi cần tính toán dùng calculator. Khi hỏi giờ dùng currentTime. " +
   "Format câu trả lời bằng Markdown khi hữu ích (list, code block, bold)."
 
-function getModel(provider: ProviderKey, modelId: string) {
+function getUserApiKey(provider: ProviderKey, userKeys?: UserKeys) {
+  if (!userKeys || typeof userKeys !== "object") return undefined
+
+  const key = provider === "google" ? userKeys.gemini : userKeys[provider]
+  return typeof key === "string" && key.trim() ? key.trim() : undefined
+}
+
+function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
+  const userApiKey = getUserApiKey(provider, userKeys)
+
   if (provider === "google") {
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    const apiKey = userApiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY
     if (!apiKey) throw new Error("Missing GOOGLE_GENERATIVE_AI_API_KEY")
     return createGoogleGenerativeAI({ apiKey })(modelId)
   }
   if (provider === "groq") {
-    const apiKey = process.env.GROQ_API_KEY
+    const apiKey = userApiKey || process.env.GROQ_API_KEY
     if (!apiKey) throw new Error("Missing GROQ_API_KEY")
     return createGroq({ apiKey })(modelId)
   }
   if (provider === "github") {
-    const apiKey = process.env.GITHUB_TOKEN
+    const apiKey = userApiKey || process.env.GITHUB_TOKEN
     if (!apiKey) throw new Error("Missing GITHUB_TOKEN")
     return createOpenAI({ apiKey, baseURL: "https://models.inference.ai.azure.com" })(modelId)
   }
@@ -34,14 +44,14 @@ function getModel(provider: ProviderKey, modelId: string) {
 
 export async function POST(req: Request) {
   try {
-    const { messages, provider, model, enabledTools } = await req.json()
+    const { messages, provider, model, enabledTools, userKeys } = await req.json()
     const p = (provider || "google") as ProviderKey
     const m = model || PROVIDERS[p].default
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
       : agentTools
     const result = streamText({
-      model: getModel(p, m),
+      model: getModel(p, m, userKeys),
       system: SYSTEM_PROMPT,
       messages,
       tools,

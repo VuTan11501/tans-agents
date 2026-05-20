@@ -362,12 +362,47 @@ function SessionItem({
   const [draft, setDraft] = useState(session.title)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareNotice, setShareNotice] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [toolDraft, setToolDraft] = useState<string[]>(() => [...(session.enabledTools ?? TOOL_NAMES)])
 
   function handleSetTags() {
     const input = prompt("Nhập nhãn, phân tách bằng dấu phẩy", (session.tags ?? []).join(", "))
     if (input === null) return
     setSessionTags(session.id, parseTags(input))
+  }
+
+  function showShareToast(message: string, type: "success" | "error" = "success") {
+    setShareNotice({ message, type })
+    window.setTimeout(() => setShareNotice(null), 3000)
+  }
+
+  async function handleShare() {
+    if (sharing) return
+    setSharing(true)
+
+    try {
+      const response = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session }),
+      })
+
+      if (!response.ok) throw new Error("Share request failed")
+
+      const data = (await response.json()) as { id?: string; url?: string }
+      const sharePath = data.url ?? (data.id ? `/share/${data.id}` : null)
+      if (!sharePath) throw new Error("Share URL missing")
+
+      const shareUrl = new URL(sharePath, window.location.origin).toString()
+      await navigator.clipboard.writeText(shareUrl)
+      showShareToast("Đã copy link chia sẻ")
+    } catch (error) {
+      console.error(error)
+      showShareToast("Không thể tạo link chia sẻ", "error")
+    } finally {
+      setSharing(false)
+    }
   }
 
   function openToolsDialog() {
@@ -506,6 +541,16 @@ function SessionItem({
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2 text-xs"
+            disabled={sharing}
+            onSelect={(e) => {
+              e.preventDefault()
+              void handleShare()
+            }}
+          >
+            🔗 {sharing ? "Đang chia sẻ..." : "Chia sẻ"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 text-xs"
             onClick={() =>
               downloadBlob(
                 sessionToMarkdown(session),
@@ -546,6 +591,19 @@ function SessionItem({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    {shareNotice && (
+      <div
+        className={cn(
+          "fixed bottom-4 right-4 z-[60] rounded-lg border px-3 py-2 text-xs shadow-lg",
+          shareNotice.type === "success"
+            ? "border-emerald-500/30 bg-emerald-500 text-white"
+            : "border-destructive/30 bg-destructive text-destructive-foreground"
+        )}
+        role="status"
+      >
+        {shareNotice.message}
+      </div>
+    )}
     <Dialog.Root open={toolsOpen} onOpenChange={setToolsOpen}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />

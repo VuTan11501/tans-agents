@@ -88,7 +88,7 @@ export function PromptLibraryDialog({ open, onOpenChange, onSelect }: PromptLibr
                         onOpenChange(false)
                       }
                     }}
-                    className="block w-full cursor-pointer rounded-lg border bg-card/60 p-3 text-left transition-colors hover:bg-accent"
+                    className="block w-full cursor-pointer rounded-lg border bg-card/60 p-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -163,7 +163,10 @@ export function PromptLibraryDialog({ open, onOpenChange, onSelect }: PromptLibr
             </div>
           </div>
 
-          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <Dialog.Close
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Đóng thư viện prompt"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
         </Dialog.Content>

@@ -1,5 +1,6 @@
 "use client"
-import { Sparkles, ChevronDown, Check, Plus, Menu, Brain, Library, Bug } from "lucide-react"
+import { useState } from "react"
+import { Sparkles, ChevronDown, Check, Plus, Menu, Brain, Library, Bug, Key } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
 import {
@@ -11,9 +12,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { ApiKeysDialog } from "@/components/api-keys-dialog"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { PersonaId } from "@/lib/personas"
 import { cn } from "@/lib/utils"
+import { hasAnyUserKey, type UserKeyProvider, type UserKeys } from "@/lib/user-keys"
 
 interface HeaderProps {
   provider: ProviderKey
@@ -27,6 +30,9 @@ interface HeaderProps {
   onOpenMemory: () => void
   onOpenPromptLibrary: () => void
   onOpenErrorLog: () => void
+  userKeys: UserKeys
+  setUserKey: (provider: UserKeyProvider, value: string) => void
+  clearUserKeys: () => void
 }
 
 export function Header({
@@ -41,8 +47,13 @@ export function Header({
   onOpenMemory,
   onOpenPromptLibrary,
   onOpenErrorLog,
+  userKeys,
+  setUserKey,
+  clearUserKeys,
 }: HeaderProps) {
+  const [apiKeysOpen, setApiKeysOpen] = useState(false)
   const providerLabel = PROVIDERS[provider].label
+  const hasKeys = hasAnyUserKey(userKeys)
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/70 backdrop-blur-xl">
@@ -72,15 +83,15 @@ export function Header({
         </div>
 
         {/* Center: Model + persona pickers */}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 max-w-[45vw] gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
+                className="h-8 min-w-0 max-w-[38vw] shrink gap-1.5 rounded-full border border-border/60 px-3 text-xs font-medium hover:bg-muted/50"
               >
-                <span className="hidden text-muted-foreground sm:inline">{providerLabel}</span>
+                <span className="hidden text-muted-foreground lg:inline">{providerLabel}</span>
                 <span className="truncate font-mono">{model}</span>
                 <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
               </Button>
@@ -153,6 +164,21 @@ export function Header({
             </TooltipTrigger>
             <TooltipContent side="bottom">Error log</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-8 w-8 shrink-0 rounded-full border border-border/60"
+                onClick={() => setApiKeysOpen(true)}
+                aria-label="Mở API keys"
+              >
+                <Key className="h-3.5 w-3.5" />
+                {hasKeys && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-500" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">API keys</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Right: New chat */}
@@ -172,6 +198,13 @@ export function Header({
           <TooltipContent side="bottom">Bắt đầu cuộc trò chuyện mới</TooltipContent>
         </Tooltip>
       </div>
+      <ApiKeysDialog
+        open={apiKeysOpen}
+        onOpenChange={setApiKeysOpen}
+        keys={userKeys}
+        setKey={setUserKey}
+        clearAll={clearUserKeys}
+      />
     </header>
   )
 }

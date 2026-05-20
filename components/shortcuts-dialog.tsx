@@ -37,7 +37,10 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
               </li>
             ))}
           </ul>
-          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <Dialog.Close
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Đóng phím tắt"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
         </Dialog.Content>
