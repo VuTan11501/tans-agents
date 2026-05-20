@@ -43,8 +43,21 @@ export async function POST(req: Request) {
       messages,
       tools: agentTools,
       maxSteps: 5,
+      onError({ error }) {
+        // surface model/SDK errors to server logs so they're not silently swallowed
+        console.error("[chat] streamText error:", error)
+      },
     })
-    return result.toDataStreamResponse()
+    return result.toDataStreamResponse({
+      // Forward the real error message into the data stream so the client UI
+      // shows a useful reason instead of the generic "An error occurred".
+      getErrorMessage: (error: unknown) => {
+        if (error == null) return "Unknown error"
+        if (typeof error === "string") return error
+        if (error instanceof Error) return error.message
+        try { return JSON.stringify(error) } catch { return String(error) }
+      },
+    })
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e?.message || "internal error" }), {
       status: 500,
