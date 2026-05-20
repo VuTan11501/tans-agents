@@ -92,6 +92,8 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [isDragging, setIsDragging] = useState(false)
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const [isNarrow, setIsNarrow] = useState(false)
+  const [inputWidth, setInputWidth] = useState(0)
+  const inputWrapRef = useRef<HTMLDivElement>(null)
   const [quotedText, setQuotedText] = useState<string | null>(null)
   const [pendingSubmitMessage, setPendingSubmitMessage] = useState<string | null>(null)
   const [isRagPrefetching, setIsRagPrefetching] = useState(false)
@@ -105,6 +107,15 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     update()
     mq.addEventListener("change", update)
     return () => mq.removeEventListener("change", update)
+  }, [])
+  useEffect(() => {
+    const el = inputWrapRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) setInputWidth(entry.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -429,13 +440,24 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
         )}
 
         <div className="flex items-end gap-2">
-          <div className={cn("min-w-0 flex-1", markdownPreviewOpen && "grid grid-cols-1 gap-2 md:grid-cols-2")}>
+          <div ref={inputWrapRef} className={cn("min-w-0 flex-1", markdownPreviewOpen && "grid grid-cols-1 gap-2 md:grid-cols-2")}>
             <Textarea
               ref={ref}
               value={value}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={placeholder || (isNarrow ? "Hỏi gì đó..." : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")}
+              placeholder={
+                placeholder ||
+                (inputWidth > 0 && inputWidth < 90
+                  ? "Hỏi..."
+                  : inputWidth > 0 && inputWidth < 200
+                  ? "Hỏi gì đó..."
+                  : inputWidth > 0 && inputWidth < 380
+                  ? "Hỏi bất cứ điều gì..."
+                  : isNarrow
+                  ? "Hỏi gì đó..."
+                  : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")
+              }
               disabled={disabled}
               rows={1}
               className="min-h-[28px] max-h-60 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
