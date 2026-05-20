@@ -32,12 +32,12 @@ export const PROVIDERS = {
     label: "GitHub Models",
     envKey: "GITHUB_TOKEN",
     // Verified active 2026-05-20 against https://models.inference.ai.azure.com/models.
-    // Phi/Mistral/Cohere are no longer listed for chat-completion via this endpoint.
+    // Llama-3.1-8B / 405B are listed but DO NOT support function-calling through the
+    // Azure inference endpoint (they reply in prose without emitting tool-calls), so
+    // they are unusable for an agent UI. Removed 2026-05-20.
     models: [
       "gpt-4o-mini",
       "gpt-4o",
-      "Meta-Llama-3.1-8B-Instruct",
-      "Meta-Llama-3.1-405B-Instruct",
     ],
     default: "gpt-4o-mini",
   },
