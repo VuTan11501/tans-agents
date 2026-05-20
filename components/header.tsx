@@ -10,6 +10,7 @@ import {
   Library,
   Bug,
   Key,
+  Mic,
   MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -66,6 +67,7 @@ export function Header({
   const providerLabel = PROVIDERS[provider].label
   const hasKeys = hasAnyUserKey(userKeys)
   const currentPersona = getPersona(persona)
+  const toggleVoiceMode = () => window.dispatchEvent(new CustomEvent("tans:voice-toggle"))
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/70 backdrop-blur-xl">
@@ -152,6 +154,9 @@ export function Header({
             <IconBtn label="Prompt Library" onClick={onOpenPromptLibrary}>
               <Library className="h-3.5 w-3.5" />
             </IconBtn>
+            <IconBtn label="Chế độ giọng nói" onClick={toggleVoiceMode}>
+              <Mic className="h-3.5 w-3.5" />
+            </IconBtn>
             <IconBtn label="Error log" onClick={onOpenErrorLog}>
               <Bug className="h-3.5 w-3.5" />
             </IconBtn>
@@ -198,6 +203,9 @@ export function Header({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onOpenPromptLibrary}>
                   <Library className="mr-2 h-4 w-4" /> Prompt Library
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={toggleVoiceMode}>
+                  <Mic className="mr-2 h-4 w-4" /> Chế độ giọng nói
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onOpenErrorLog}>
                   <Bug className="mr-2 h-4 w-4" /> Error log

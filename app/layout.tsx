@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ThemeProvider } from "@/components/theme-provider"
 import { PWARegister } from "@/components/pwa-register"
+import { VoiceMode } from "@/components/voice-mode"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -25,7 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-background font-sans antialiased">
         <PWARegister />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+          <TooltipProvider delayDuration={300}>
+            {children}
+            <VoiceMode />
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>
