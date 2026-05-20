@@ -47,8 +47,13 @@ export async function POST(req: Request) {
         // surface model/SDK errors to server logs so they're not silently swallowed
         console.error("[chat] streamText error:", error)
       },
+      onFinish({ finishReason, usage }) {
+        console.log("[chat] streamText finish:", { finishReason, usage })
+      },
     })
     return result.toDataStreamResponse({
+      sendUsage: true,
+      sendReasoning: false,
       // Forward the real error message into the data stream so the client UI
       // shows a useful reason instead of the generic "An error occurred".
       getErrorMessage: (error: unknown) => {

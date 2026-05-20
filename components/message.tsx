@@ -2,7 +2,7 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X } from "lucide-react"
+import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
@@ -17,6 +17,16 @@ interface MessageProps {
   isLastAssistant?: boolean
   onRegenerate?: () => void
   onEditUser?: (newContent: string) => void
+  onContinue?: () => void
+  wasTruncated?: boolean
+}
+
+export function isLikelyTruncated(content: string): boolean {
+  if (!content || content.length < 200) return false
+  const trimmed = content.trimEnd()
+  const last = trimmed.slice(-1)
+  // Câu hoàn chỉnh thường kết thúc bằng . ! ? " ' ` ) ] } ;
+  return !/[.!?"'`)\]};]/.test(last)
 }
 
 export function MessageBubble({
@@ -27,11 +37,14 @@ export function MessageBubble({
   isLastAssistant,
   onRegenerate,
   onEditUser,
+  onContinue,
+  wasTruncated,
 }: MessageProps) {
   const isUser = role === "user"
   const toolInvocations = (parts || []).filter((p) => p.type === "tool-invocation")
   const displayedContent = useTypewriter(isUser ? "" : content)
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
+  const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
 
   // User message: support edit + copy
   const [editing, setEditing] = useState(false)
@@ -148,6 +161,11 @@ export function MessageBubble({
             {isLastAssistant && onRegenerate && (
               <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
                 <RefreshCw className="h-3.5 w-3.5" />
+              </ActionIcon>
+            )}
+            {showContinue && (
+              <ActionIcon label="Tiếp tục" onClick={onContinue}>
+                <MoreHorizontal className="h-3.5 w-3.5" />
               </ActionIcon>
             )}
             <ActionIcon label="Hữu ích">

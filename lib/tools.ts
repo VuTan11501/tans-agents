@@ -4,19 +4,25 @@ import { z } from "zod"
 export const currentTime = tool({
   description: "Get the current date and time in ISO format. Use when user asks about time/date.",
   parameters: z.object({}),
-  execute: async () => ({ now: new Date().toISOString() }),
+  execute: async () => {
+    try {
+      return { now: new Date().toISOString() }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "time failed") }
+    }
+  },
 })
 
 export const calculator = tool({
   description: "Evaluate a simple math expression. Only digits and + - * / ( ) . are allowed.",
   parameters: z.object({ expression: z.string().describe("e.g. '12 * 34 + 5'") }),
   execute: async ({ expression }) => {
-    if (!/^[\d+\-*/().\s]+$/.test(expression)) return { error: "invalid characters" }
     try {
+      if (!/^[\d+\-*/().\s]+$/.test(expression)) return { error: "invalid characters" }
       const result = safeEval(expression)
       return { result }
-    } catch (e: any) {
-      return { error: e?.message || "eval error" }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "eval error") }
     }
   },
 })
@@ -64,24 +70,226 @@ function safeEval(expr: string): number {
   return stack[0]
 }
 
+type SearchResult = { title: string; url: string; snippet: string }
+
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback
+}
+
+function stripHtml(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  )
+}
+
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    nbsp: " ",
+  }
+
+  return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (_, entity: string) => {
+    if (entity[0] === "#") {
+      const isHex = entity[1]?.toLowerCase() === "x"
+      const code = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
+      return Number.isFinite(code) ? String.fromCodePoint(code) : ""
+    }
+    return named[entity] ?? `&${entity};`
+  })
+}
+
+function extractTitle(html: string): string {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  return match ? stripHtml(match[1]) : ""
+}
+
+function weatherDescription(code: number): string {
+  const descriptions: Record<number, string> = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    61: "Slight rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Slight snow",
+    73: "Moderate snow",
+    75: "Heavy snow",
+    80: "Slight rain showers",
+    81: "Moderate rain showers",
+    82: "Violent rain showers",
+    95: "Thunderstorm",
+  }
+  return descriptions[code] ?? "Unknown"
+}
+
 export const webSearch = tool({
-  description: "Search the web via DuckDuckGo. Use for current news, facts, anything beyond training cutoff.",
-  parameters: z.object({ query: z.string() }),
+  description: "Search current web results. Uses Brave when configured, otherwise DuckDuckGo.",
+  parameters: z.object({ query: z.string().describe("Search query") }),
   execute: async ({ query }) => {
     try {
+      const braveKey = process.env.BRAVE_SEARCH_API_KEY
+      if (braveKey) {
+        const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`
+        const r = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": braveKey,
+          },
+        })
+        if (!r.ok) throw new Error(`Brave search failed: ${r.status}`)
+        const data = await r.json()
+        const results: SearchResult[] = (data.web?.results ?? []).slice(0, 5).map((item: any) => ({
+          title: item.title ?? "",
+          url: item.url ?? "",
+          snippet: item.description ?? "",
+        }))
+        return { source: "brave", results }
+      }
+
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
       const r = await fetch(url)
+      if (!r.ok) throw new Error(`DuckDuckGo search failed: ${r.status}`)
       const data = await r.json()
-      const topics = (data.RelatedTopics || [])
-        .filter((t: any) => t.Text)
+      const topicResults: SearchResult[] = (data.RelatedTopics ?? [])
+        .flatMap((topic: any) => (topic.Topics ? topic.Topics : [topic]))
+        .filter((topic: any) => topic.Text)
         .slice(0, 5)
-        .map((t: any, i: number) => `[${i + 1}] ${t.Text} — ${t.FirstURL || ""}`)
-      const abstract = data.AbstractText || ""
-      return { abstract, related: topics.length ? topics.join("\n") : "no results" }
-    } catch (e: any) {
-      return { error: e?.message || "search failed" }
+        .map((topic: any) => ({
+          title: topic.Text?.split(" - ")[0] ?? topic.Text ?? "",
+          url: topic.FirstURL ?? "",
+          snippet: topic.Text ?? "",
+        }))
+      const results = data.AbstractText
+        ? [{ title: data.Heading ?? query, url: data.AbstractURL ?? "", snippet: data.AbstractText }, ...topicResults].slice(0, 5)
+        : topicResults
+      return { source: "ddg", results }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "search failed") }
     }
   },
 })
 
-export const agentTools = { currentTime, calculator, webSearch }
+export const weather = tool({
+  description: "Get current weather for a city or place using Open-Meteo. Use for weather questions.",
+  parameters: z.object({ location: z.string().describe("City or place name, e.g. Hanoi") }),
+  execute: async ({ location }) => {
+    try {
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`
+      const geoResponse = await fetch(geoUrl)
+      if (!geoResponse.ok) throw new Error(`geocoding failed: ${geoResponse.status}`)
+      const geoData = await geoResponse.json()
+      const place = geoData.results?.[0]
+      if (!place) return { error: `location not found: ${location}` }
+
+      const forecastUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
+        "&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=auto"
+      const forecastResponse = await fetch(forecastUrl)
+      if (!forecastResponse.ok) throw new Error(`weather fetch failed: ${forecastResponse.status}`)
+      const forecast = await forecastResponse.json()
+      const current = forecast.current ?? {}
+      return {
+        location: [place.name, place.admin1, place.country].filter(Boolean).join(", "),
+        current: {
+          time: current.time,
+          temperature_2m: current.temperature_2m,
+          relative_humidity_2m: current.relative_humidity_2m,
+          precipitation: current.precipitation,
+          weather_code: current.weather_code,
+          weather_description: weatherDescription(current.weather_code),
+          wind_speed_10m: current.wind_speed_10m,
+          units: forecast.current_units ?? {},
+        },
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "weather failed") }
+    }
+  },
+})
+
+export const wikipedia = tool({
+  description: "Find a short Wikipedia summary. Use for encyclopedia-style background facts.",
+  parameters: z.object({
+    query: z.string().describe("Topic to search"),
+    lang: z.enum(["vi", "en"]).optional().default("vi"),
+  }),
+  execute: async ({ query, lang }) => {
+    try {
+      const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=1&format=json`
+      const searchResponse = await fetch(searchUrl)
+      if (!searchResponse.ok) throw new Error(`Wikipedia search failed: ${searchResponse.status}`)
+      const searchData = await searchResponse.json()
+      const title = searchData?.[1]?.[0]
+      if (!title) return { error: `no Wikipedia result for: ${query}` }
+
+      const summaryUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`
+      const summaryResponse = await fetch(summaryUrl, { headers: { Accept: "application/json" } })
+      if (!summaryResponse.ok) throw new Error(`Wikipedia summary failed: ${summaryResponse.status}`)
+      const summary = await summaryResponse.json()
+      return {
+        title: summary.title ?? title,
+        extract: summary.extract ?? "",
+        url: summary.content_urls?.desktop?.page ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "wikipedia failed") }
+    }
+  },
+})
+
+export const fetchUrl = tool({
+  description: "Fetch a public URL and extract readable HTML text. Use when user asks to read a webpage.",
+  parameters: z.object({ url: z.string().url().describe("HTTP or HTTPS URL to fetch") }),
+  execute: async ({ url }) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return { error: "only http/https URLs are supported" }
+      const response = await fetch(parsed.toString(), { headers: { Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8" } })
+      if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
+      const html = await response.text()
+      return {
+        url: parsed.toString(),
+        title: extractTitle(html),
+        text: stripHtml(html).slice(0, 8000),
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "fetch URL failed") }
+    }
+  },
+})
+
+export const generateImage = tool({
+  description: "Create an image URL from a prompt with Pollinations.ai. Use for image generation requests.",
+  parameters: z.object({
+    prompt: z.string().describe("Image prompt"),
+    width: z.number().int().min(64).max(2048).optional().default(1024),
+    height: z.number().int().min(64).max(2048).optional().default(1024),
+  }),
+  execute: async ({ prompt, width, height }) => {
+    try {
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true`
+      return { url, markdown: `![${prompt}](${url})` }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "image generation failed") }
+    }
+  },
+})
+
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage }

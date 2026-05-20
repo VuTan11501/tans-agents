@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { ThemeToggle } from "@/components/theme-toggle"
 import type { ChatSession } from "@/hooks/use-chat-history"
 
 interface SidebarProps {
@@ -173,11 +174,15 @@ export function Sidebar({
         </div>
 
         <div className="border-t border-border/50 p-2">
+          <div className="px-1 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            Giao diện
+          </div>
+          <ThemeToggle variant="menu-item" />
           {sessions.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-start gap-2 text-xs text-muted-foreground hover:text-destructive"
+              className="mt-1 w-full justify-start gap-2 text-xs text-muted-foreground hover:text-destructive"
               onClick={() => {
                 if (confirm("Xóa toàn bộ lịch sử trò chuyện?")) onClearAll()
               }}

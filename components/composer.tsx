@@ -1,8 +1,9 @@
 "use client"
-import { useRef, useEffect, type FormEvent, type KeyboardEvent } from "react"
+import { useRef, useEffect, useState, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowUp, Square } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { cn } from "@/lib/utils"
 
 interface ComposerProps {
@@ -17,6 +18,11 @@ interface ComposerProps {
 
 export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const slash = matchSlash(value)
+  const slashMatches = slashOpen && slash ? slash.matches : []
+  const showSlash = slashMatches.length > 0
 
   // Auto-grow
   useEffect(() => {
@@ -26,7 +32,53 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     el.style.height = Math.min(el.scrollHeight, 240) + "px"
   }, [value])
 
+  useEffect(() => {
+    if (!showSlash) return
+    if (slashIndex >= slashMatches.length) setSlashIndex(0)
+  }, [showSlash, slashMatches.length, slashIndex])
+
+  function selectSlashCommand(cmd: SlashCommand) {
+    const next = cmd.template("")
+    onChange(next)
+    setSlashOpen(false)
+    setSlashIndex(0)
+    window.requestAnimationFrame(() => {
+      ref.current?.focus()
+      ref.current?.setSelectionRange(next.length, next.length)
+    })
+  }
+
+  function handleChange(next: string) {
+    onChange(next)
+    const nextSlash = matchSlash(next)
+    setSlashOpen(!!nextSlash && nextSlash.matches.length > 0)
+    setSlashIndex(0)
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (showSlash) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setSlashIndex((i) => (i + 1) % slashMatches.length)
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length)
+        return
+      }
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault()
+        selectSlashCommand(slashMatches[slashIndex] ?? slashMatches[0])
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setSlashOpen(false)
+        return
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       if (value.trim() && !isStreaming) {
@@ -37,6 +89,31 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
 
   return (
     <form onSubmit={onSubmit} className="relative">
+      {showSlash && (
+        <div className="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
+          {slashMatches.map((cmd, index) => (
+            <button
+              key={cmd.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                selectSlashCommand(cmd)
+              }}
+              onMouseEnter={() => setSlashIndex(index)}
+              className={cn(
+                "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors",
+                index === slashIndex && "bg-accent text-accent-foreground"
+              )}
+            >
+              <span className="min-w-20 text-sm font-medium">{cmd.label}</span>
+              <span className="text-xs text-muted-foreground">{cmd.description}</span>
+            </button>
+          ))}
+          <div className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
+            ↑↓ chọn, Enter, Esc đóng · {SLASH_COMMANDS.length} lệnh
+          </div>
+        </div>
+      )}
       <div
         className={cn(
           "group relative flex items-end gap-2 rounded-3xl border border-border/80 bg-card/80 p-2 pl-4 shadow-lg backdrop-blur-md transition-all",
@@ -46,7 +123,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
         <Textarea
           ref={ref}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)"}
           disabled={disabled}

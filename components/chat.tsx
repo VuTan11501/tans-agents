@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Header } from "@/components/header"
 import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
-import { MessageBubble } from "@/components/message"
+import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
@@ -36,6 +36,7 @@ export function Chat() {
     stop,
     error,
     reload,
+    append,
   } = useChat({
     api: "/api/chat",
     body: { provider, model },
@@ -165,6 +166,16 @@ export function Chat() {
                       isLoading && i === messages.length - 1 && m.role === "assistant"
                     }
                     isLastAssistant={isLastAssistant}
+                    wasTruncated={isLastAssistant && isLikelyTruncated(m.content)}
+                    onContinue={
+                      isLastAssistant
+                        ? () =>
+                            append({
+                              role: "user",
+                              content: "Tiếp tục từ chỗ bạn vừa dừng, không lặp lại.",
+                            })
+                        : undefined
+                    }
                     onRegenerate={() => reload()}
                     onEditUser={
                       m.role === "user"
