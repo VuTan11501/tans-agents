@@ -1,11 +1,16 @@
 "use client"
 import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, Eye, FileText, Mic, Paperclip, Square, X } from "lucide-react"
+import { ArrowUp, Eye, FileText, Mic, Paperclip, Plus, Square, X } from "lucide-react"
 import { MarkdownPreview } from "@/components/markdown-preview"
 import { RagPicker } from "@/components/rag-picker"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ImageMarkupDialog } from "@/components/image-markup-dialog"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
@@ -130,7 +135,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     return { used, limit, pct, barPct: Math.min(100, Math.max(0, pct)) }
   }, [messages, model, composedValue])
   const contextRingColor = contextUsage.pct < 50 ? "text-primary" : contextUsage.pct <= 80 ? "text-amber-500" : "text-red-500"
-  const RING_RADIUS = 8
+  const RING_RADIUS = 11
   const RING_CIRC = 2 * Math.PI * RING_RADIUS
   const ringOffset = RING_CIRC * (1 - contextUsage.barPct / 100)
 
@@ -373,35 +378,38 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           </div>
         )}
 
-        <div className="mb-2 flex items-center justify-end gap-2 pr-2">
-          <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
-            {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} ({contextUsage.pct}%)
-          </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className={cn("relative inline-flex h-5 w-5 items-center justify-center", contextRingColor)}>
-                <svg className="h-5 w-5 -rotate-90" viewBox="0 0 20 20" aria-hidden>
-                  <circle cx="10" cy="10" r={RING_RADIUS} fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
-                  <circle
-                    cx="10"
-                    cy="10"
-                    r={RING_RADIUS}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeDasharray={RING_CIRC}
-                    strokeDashoffset={ringOffset}
-                    style={{ transition: "stroke-dashoffset 200ms ease-out" }}
-                  />
-                </svg>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Context: {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} token ({contextUsage.pct}%)
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                "pointer-events-auto absolute right-3 top-2 z-10 inline-flex h-7 w-7 items-center justify-center",
+                contextRingColor
+              )}
+            >
+              <svg className="absolute inset-0 h-7 w-7 -rotate-90" viewBox="0 0 28 28" aria-hidden>
+                <circle cx="14" cy="14" r={RING_RADIUS} fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
+                <circle
+                  cx="14"
+                  cy="14"
+                  r={RING_RADIUS}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_CIRC}
+                  strokeDashoffset={ringOffset}
+                  style={{ transition: "stroke-dashoffset 200ms ease-out" }}
+                />
+              </svg>
+              <span className="relative text-[8px] font-semibold leading-none tabular-nums">
+                {contextUsage.pct}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            Context: {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} token ({contextUsage.pct}%)
+          </TooltipContent>
+        </Tooltip>
 
         {quotedText && (
           <div className="mb-2 flex items-start gap-2 rounded-xl border border-l-4 border-border border-l-violet-500 bg-muted/45 px-3 py-2 pr-2 text-sm text-muted-foreground">
@@ -472,15 +480,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             {markdownPreviewOpen && <MarkdownPreview value={previewValue} className="max-h-60" />}
           </div>
 
-          <div className="absolute bottom-1 left-4 hidden gap-1 sm:flex" title="Số token ước tính (cl100k)">
-            <Badge variant="outline" className="text-[10px] font-mono">
-              {countTokens(composedValue)} tokens
-            </Badge>
-            {tokenStats && (
-              <Badge variant="outline" className="text-[10px] font-mono">
-                ↑ {tokenStats.input} ↓ {tokenStats.output} · {tokenStats.cost ?? "—"}
-              </Badge>
-            )}
+          <div className="absolute bottom-1 left-4 hidden gap-1" title="Số token ước tính (cl100k)">
           </div>
 
           <input
@@ -492,25 +492,49 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             className="hidden"
           />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => setMarkdownPreviewOpen((open) => !open)}
-                aria-pressed={markdownPreviewOpen}
-                className={cn(
-                  "h-9 w-9 shrink-0 rounded-full",
-                  markdownPreviewOpen && "bg-muted text-primary hover:bg-muted/80 hover:text-primary"
-                )}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    disabled={disabled}
+                    className="h-9 w-9 shrink-0 rounded-full"
+                    aria-label="Tuỳ chọn thêm"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Tuỳ chọn thêm</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end" side="top" className="w-52">
+              <DropdownMenuItem
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || files.length >= MAX_FILES}
               >
-                <Eye className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Xem trước Markdown</TooltipContent>
-          </Tooltip>
+                <Paperclip className="mr-2 h-4 w-4" />
+                <span className="flex-1">Đính kèm file</span>
+                {files.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground">{files.length}/{MAX_FILES}</span>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setMarkdownPreviewOpen((open) => !open)}
+                disabled={disabled}
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                <span className="flex-1">Xem trước Markdown</span>
+                {markdownPreviewOpen && <span className="text-[10px] text-primary">●</span>}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <div className="hidden">
+            <RagPicker disabled={disabled || isRagPrefetching} />
+          </div>
 
           {voiceSupported && (
             <Button
@@ -528,20 +552,6 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
               <Mic className="h-4 w-4" />
             </Button>
           )}
-
-          <RagPicker disabled={disabled || isRagPrefetching} />
-
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            disabled={disabled || files.length >= MAX_FILES}
-            onClick={() => fileInputRef.current?.click()}
-            className="h-9 w-9 shrink-0 rounded-full"
-            title="Đính kèm file"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
 
           {isStreaming ? (
             <Button
