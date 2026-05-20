@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Pencil,
   Copy as CopyIcon,
+  Download,
   Check,
   X as XIcon,
 } from "lucide-react"
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { downloadBlob, safeFilename, sessionToJSON, sessionToMarkdown } from "@/lib/export"
 import type { ChatSession } from "@/hooks/use-chat-history"
 
 interface SidebarProps {
@@ -295,6 +297,30 @@ function SessionItem({
           </DropdownMenuItem>
           <DropdownMenuItem className="gap-2 text-xs" onClick={onDuplicate}>
             <CopyIcon className="h-3.5 w-3.5" /> Nhân bản
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 text-xs"
+            onClick={() =>
+              downloadBlob(
+                sessionToMarkdown(session),
+                safeFilename(session.title, "md"),
+                "text/markdown;charset=utf-8"
+              )
+            }
+          >
+            <Download className="h-3.5 w-3.5" /> Xuất Markdown
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 text-xs"
+            onClick={() =>
+              downloadBlob(
+                sessionToJSON(session),
+                safeFilename(session.title, "json"),
+                "application/json"
+              )
+            }
+          >
+            <Download className="h-3.5 w-3.5" /> Xuất JSON
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

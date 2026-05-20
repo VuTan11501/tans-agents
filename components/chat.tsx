@@ -1,14 +1,17 @@
 "use client"
 
 import { useChat } from "ai/react"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { countTokens, estimateCost, formatCost } from "@/lib/tokens"
 import { Header } from "@/components/header"
 import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
+import { ShortcutsDialog } from "@/components/shortcuts-dialog"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
+import { useHotkeys } from "@/hooks/use-hotkeys"
 
 function newId() {
   return (
@@ -21,6 +24,7 @@ export function Chat() {
   const [provider, setProvider] = useState<ProviderKey>("groq")
   const [model, setModel] = useState<string>(PROVIDERS.groq.default)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [sessionId, setSessionId] = useState<string>(() => newId())
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
@@ -73,6 +77,19 @@ export function Chat() {
     scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [messages.length, streamingLen])
 
+  // Token + cost estimate
+  const tokenStats = useMemo(() => {
+    let input = 0
+    let output = 0
+    for (const m of messages) {
+      const t = countTokens(typeof m.content === "string" ? m.content : "")
+      if (m.role === "assistant") output += t
+      else input += t
+    }
+    const cost = formatCost(estimateCost(model, input, output))
+    return { input, output, cost }
+  }, [messages, model])
+
   function handleProviderChange(p: ProviderKey, m: string) {
     setProvider(p)
     setModel(m)
@@ -84,6 +101,21 @@ export function Chat() {
     setInput("")
     setSessionId(newId())
   }, [setMessages, setInput])
+
+  useHotkeys([
+    { combo: "mod+k", handler: () => setSidebarOpen((o) => !o), allowInInput: true },
+    { combo: "mod+shift+o", handler: handleNewChat, allowInInput: true },
+    {
+      combo: "mod+/",
+      handler: () => {
+        const ta = document.querySelector<HTMLTextAreaElement>("textarea")
+        ta?.focus()
+      },
+      allowInInput: true,
+    },
+    { combo: "escape", handler: () => { if (isLoading) stop() } },
+    { combo: "shift+?", handler: () => setShortcutsOpen(true) },
+  ])
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -227,6 +259,7 @@ export function Chat() {
             onSubmit={handleSubmit}
             onStop={stop}
             isStreaming={isLoading}
+            tokenStats={tokenStats}
           />
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             AI có thể tạo thông tin không chính xác · Powered by{" "}
@@ -234,6 +267,8 @@ export function Chat() {
           </p>
         </div>
       </div>
+
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   )
 }

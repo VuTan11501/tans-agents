@@ -3,7 +3,9 @@ import { useRef, useEffect, useState, type FormEvent, type KeyboardEvent } from 
 import { ArrowUp, Square } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
+import { countTokens } from "@/lib/tokens"
 import { cn } from "@/lib/utils"
 
 interface ComposerProps {
@@ -14,9 +16,10 @@ interface ComposerProps {
   isStreaming: boolean
   disabled?: boolean
   placeholder?: string
+  tokenStats?: { input: number; output: number; cost: string | null }
 }
 
-export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
@@ -128,9 +131,20 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           placeholder={placeholder || "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)"}
           disabled={disabled}
           rows={1}
-          className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 text-[15px] shadow-none focus-visible:ring-0"
+          className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
           autoFocus
         />
+
+        <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
+          <Badge variant="outline" className="text-[10px] font-mono">
+            {countTokens(value)} tokens
+          </Badge>
+          {tokenStats && (
+            <Badge variant="outline" className="text-[10px] font-mono">
+              ↑ {tokenStats.input} ↓ {tokenStats.output} · {tokenStats.cost ?? "—"}
+            </Badge>
+          )}
+        </div>
 
         {isStreaming ? (
           <Button

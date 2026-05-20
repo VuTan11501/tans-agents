@@ -2,73 +2,73 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Smoothly reveals incoming streaming text, ChatGPT-style.
+ * Adaptive typewriter buffer — decouples upstream chunk arrival from render
+ * rate so the UI always feels like it's typing char-by-char even when the
+ * model batches 5-10+ tokens per chunk (Gemini, cached prompts) or finishes
+ * in a single payload.
  *
- * Even when an upstream provider (e.g. Gemini) delivers the whole response
- * in a single chunk, the visible text advances character-by-character at a
- * target rate so the UI always *feels* like it's typing. The animation keeps
- * running until `displayed` catches up to `target`, regardless of whether
- * the network stream is still open — this is critical because some providers
- * (Gemini, GitHub Models with cached prompts) finish streaming before the
- * first paint frame.
+ * Adapted from Code/docs/js/ai-agent.js createTypewriter:
+ *   remaining > 800 → take = ceil(remaining / 30)    (burst flush, catch up fast)
+ *   remaining > 200 → take = 5
+ *   remaining >  80 → take = 3
+ *   remaining >  25 → take = 2
+ *   else            → take = 1
  *
- * The hook only "snaps" to the target instantly when the target shrinks,
- * which signals a new conversation / message reset.
+ * At 60fps that gives a baseline ~60-180 chars/sec when streaming smoothly
+ * (≈ ChatGPT cadence), and a burst mode that drains 1KB+ payloads in <1s so
+ * long replies don't lag forever.
  *
- * @param target  the latest fully-received text from useChat
- * @param charsPerSecond  reveal speed
+ * The animation runs INDEPENDENTLY of whether the network stream is still
+ * open — providers that finish in one chunk still get animated. We only
+ * "snap" to target instantly when target shrinks (= new message reset).
+ *
+ * @param target  latest fully-received text from useChat
  */
-export function useTypewriter(target: string, charsPerSecond = 260) {
+export function useTypewriter(target: string) {
   const [displayed, setDisplayed] = useState<string>("")
   const rafRef = useRef<number | null>(null)
-  const lastTickRef = useRef<number>(0)
   const displayedRef = useRef<string>("")
   const targetRef = useRef<string>(target)
   targetRef.current = target
 
   useEffect(() => {
-    // Snap on reset (new message starts → target shorter than displayed).
+    // Snap-reset when target shrinks (e.g. new conversation / regenerate).
     if (target.length < displayedRef.current.length) {
       displayedRef.current = target
       setDisplayed(target)
-      lastTickRef.current = 0
       return
     }
-    // Already caught up — nothing to animate.
     if (displayedRef.current.length >= target.length) return
-    // Already animating — the running loop will pick up the new target via ref.
     if (rafRef.current != null) return
 
-    const tick = (now: number) => {
-      const last = lastTickRef.current || now
-      const dt = Math.max(0, now - last)
-      lastTickRef.current = now
+    const tick = () => {
       const cur = displayedRef.current
       const tgt = targetRef.current
-      if (cur.length >= tgt.length) {
+      const remaining = tgt.length - cur.length
+      if (remaining <= 0) {
         rafRef.current = null
         return
       }
-      // Smooth speed: ~charsPerSecond, plus a "catch-up" boost if we're far behind.
-      const behind = tgt.length - cur.length
-      const baseChars = Math.max(1, Math.round((dt / 1000) * charsPerSecond))
-      const catchupBoost = behind > 200 ? Math.floor(behind / 40) : 0
-      const charsToAdd = baseChars + catchupBoost
-      const next = tgt.slice(0, cur.length + charsToAdd)
+      let take: number
+      if (remaining > 800) take = Math.ceil(remaining / 30)
+      else if (remaining > 200) take = 5
+      else if (remaining > 80) take = 3
+      else if (remaining > 25) take = 2
+      else take = 1
+      const next = tgt.slice(0, cur.length + take)
       displayedRef.current = next
       setDisplayed(next)
       rafRef.current = requestAnimationFrame(tick)
     }
-    lastTickRef.current = 0
     rafRef.current = requestAnimationFrame(tick)
-  }, [target, charsPerSecond])
+  }, [target])
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-    }
-  }, [])
+    },
+    []
+  )
 
   return displayed
 }
-

@@ -3,11 +3,13 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ThemeProvider } from "@/components/theme-provider"
+import { PWARegister } from "@/components/pwa-register"
 import "./globals.css"
 
 export const metadata: Metadata = {
   title: "Tan's AI Agent",
   description: "Multi-provider free AI agent · powered by shadcn/ui",
+  manifest: "/manifest.json",
 }
 
 export const viewport: Viewport = {
@@ -21,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="vi" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans antialiased">
+        <PWARegister />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         </ThemeProvider>
