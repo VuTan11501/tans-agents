@@ -54,29 +54,31 @@ export function ModelPicker({
   size = "sm",
   disabled,
 }: ModelPickerProps) {
-  const [discoveredGoogleModels, setDiscoveredGoogleModels] = useState<string[] | null>(null)
-  const [discoveringGoogle, setDiscoveringGoogle] = useState(false)
-  const [discoverError, setDiscoverError] = useState<string | null>(null)
+  const [discovered, setDiscovered] = useState<Partial<Record<ProviderKey, string[]>>>({})
+  const [discovering, setDiscovering] = useState<ProviderKey | null>(null)
+  const [discoverError, setDiscoverError] = useState<Partial<Record<ProviderKey, string>>>({})
   const isAutoModel = model === "auto"
   const providerLabel = provider ? PROVIDERS[provider].label : ""
 
-  async function discoverGoogleModels() {
-    setDiscoveringGoogle(true)
-    setDiscoverError(null)
+  async function discoverModels(p: ProviderKey) {
+    setDiscovering(p)
+    setDiscoverError((prev) => ({ ...prev, [p]: undefined }))
     try {
-      const res = await fetch("/api/google/models", {
+      const userKey =
+        p === "google" ? userKeys?.gemini : p === "groq" ? userKeys?.groq : userKeys?.github
+      const res = await fetch(`/api/${p}/models`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userKey: userKeys?.gemini ?? "" }),
+        body: JSON.stringify({ userKey: userKey ?? "" }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
       const ids = (data.models as Array<{ id: string }>).map((m) => m.id)
-      setDiscoveredGoogleModels(ids)
+      setDiscovered((prev) => ({ ...prev, [p]: ids }))
     } catch (err) {
-      setDiscoverError(err instanceof Error ? err.message : String(err))
+      setDiscoverError((prev) => ({ ...prev, [p]: err instanceof Error ? err.message : String(err) }))
     } finally {
-      setDiscoveringGoogle(false)
+      setDiscovering(null)
     }
   }
 
@@ -129,11 +131,14 @@ export function ModelPicker({
           </>
         )}
         {Object.entries(PROVIDERS).map(([pKey, p]) => {
-          const isGoogle = pKey === "google"
+          const pTyped = pKey as ProviderKey
+          const discoveredIds = discovered[pTyped]
           const modelList: readonly string[] =
-            isGoogle && discoveredGoogleModels && discoveredGoogleModels.length > 0
-              ? Array.from(new Set([...p.models, ...discoveredGoogleModels]))
+            discoveredIds && discoveredIds.length > 0
+              ? Array.from(new Set([...p.models, ...discoveredIds]))
               : p.models
+          const isDiscovering = discovering === pTyped
+          const errMsg = discoverError[pTyped]
           return (
             <div key={pKey}>
               <DropdownMenuLabel className="flex items-center justify-between">
@@ -146,7 +151,7 @@ export function ModelPicker({
                 return (
                   <DropdownMenuItem
                     key={m}
-                    onClick={() => onChange(pKey as ProviderKey, m)}
+                    onClick={() => onChange(pTyped, m)}
                     className={cn("font-mono text-xs", (selected || onlyByModel) && "bg-accent")}
                   >
                     <span className="flex-1 break-all">{m}</span>
@@ -154,25 +159,23 @@ export function ModelPicker({
                   </DropdownMenuItem>
                 )
               })}
-              {isGoogle && (
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    discoverGoogleModels()
-                  }}
-                  className="text-[11px] text-muted-foreground"
-                  disabled={discoveringGoogle}
-                >
-                  {discoveringGoogle
-                    ? "Đang quét..."
-                    : discoveredGoogleModels
-                    ? `↻ Quét lại (${discoveredGoogleModels.length} model)`
-                    : "↻ Quét live model có sẵn với key của bạn"}
-                </DropdownMenuItem>
-              )}
-              {isGoogle && discoverError && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  discoverModels(pTyped)
+                }}
+                className="text-[11px] text-muted-foreground"
+                disabled={isDiscovering}
+              >
+                {isDiscovering
+                  ? "Đang quét..."
+                  : discoveredIds
+                  ? `↻ Quét lại (${discoveredIds.length} model)`
+                  : "↻ Quét live model có sẵn với key của bạn"}
+              </DropdownMenuItem>
+              {errMsg && (
                 <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">
-                  {discoverError}
+                  {errMsg}
                 </div>
               )}
               <DropdownMenuSeparator />
