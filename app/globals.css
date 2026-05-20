@@ -97,6 +97,25 @@
 .dot-2 { animation: dot-pulse 1.2s infinite ease-in-out 0.15s; }
 .dot-3 { animation: dot-pulse 1.2s infinite ease-in-out 0.3s; }
 
+@keyframes stream-cursor-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.2; }
+  100% { opacity: 1; }
+}
+/* The streaming "▍" glyph appended to the last block in the assistant's
+   markdown content. We can't easily wrap the trailing character via
+   ReactMarkdown, so we use ::after on the last rendered child of the
+   prose container, which puts the cursor inline at the end of the text. */
+.prose-chat-streaming > *:last-child::after {
+  content: "▍";
+  display: inline-block;
+  margin-left: 2px;
+  color: hsl(var(--foreground) / 0.85);
+  animation: stream-cursor-blink 1s steps(2, end) infinite;
+  font-weight: 400;
+  vertical-align: -0.04em;
+}
+
 /* Smooth fade-in for messages */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(8px); }

@@ -18,9 +18,13 @@ export function Chat() {
     body: { provider, model },
   })
 
+  // Auto-scroll: follow the bottom while assistant is streaming new tokens.
+  // Tracks length of last message content so we rerun on every token, not just new messages.
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
+  const streamingLen = lastAssistant?.content?.length ?? 0
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [messages])
+  }, [messages.length, streamingLen])
 
   function handleProviderChange(p: ProviderKey, m: string) {
     setProvider(p)
@@ -46,8 +50,14 @@ export function Chat() {
             <EmptyState onPick={(t) => setInput(t)} />
           ) : (
             <div className="space-y-8 py-8">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} role={m.role} content={m.content} parts={m.parts} />
+              {messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  role={m.role}
+                  content={m.content}
+                  parts={m.parts}
+                  isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
+                />
               ))}
               <div ref={scrollEndRef} className="h-1" />
             </div>

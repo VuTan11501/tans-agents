@@ -12,9 +12,10 @@ interface MessageProps {
   role: string
   content: string
   parts?: any[]
+  isStreaming?: boolean
 }
 
-export function MessageBubble({ role, content, parts }: MessageProps) {
+export function MessageBubble({ role, content, parts, isStreaming }: MessageProps) {
   const isUser = role === "user"
   const toolInvocations = (parts || []).filter((p) => p.type === "tool-invocation")
 
@@ -55,7 +56,7 @@ export function MessageBubble({ role, content, parts }: MessageProps) {
         )}
 
         {content ? (
-          <div className="prose-chat">
+          <div className={cn("prose-chat", isStreaming && "prose-chat-streaming")}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -69,7 +70,7 @@ export function MessageBubble({ role, content, parts }: MessageProps) {
           toolInvocations.length === 0 && <ThinkingDots />
         )}
 
-        {content && (
+        {content && !isStreaming && (
           <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <CopyButton text={content} />
           </div>
