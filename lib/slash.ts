@@ -1,3 +1,5 @@
+import { expandSnippet, getSnippets, snippetTrigger } from "@/lib/snippets"
+
 export interface SlashCommand {
   id: string
   trigger: string
@@ -69,8 +71,17 @@ export function matchSlash(input: string): { matches: SlashCommand[]; query: str
   const query = space === -1 ? input.slice(1) : input.slice(1, space)
   if (space !== -1) return null
   const q = query.toLowerCase()
-  const matches = SLASH_COMMANDS.filter(
-    (c) => c.id.startsWith(q) || c.trigger.toLowerCase().includes(q)
-  )
+  const commands = [...SLASH_COMMANDS, ...snippetSlashCommands()]
+  const matches = commands.filter((c) => c.id.startsWith(q) || c.trigger.toLowerCase().includes(q))
   return { matches, query }
+}
+
+function snippetSlashCommands(): SlashCommand[] {
+  return getSnippets().map((snippet) => ({
+    id: `snippet-${snippet.id}`,
+    trigger: snippetTrigger(snippet.name),
+    label: snippetTrigger(snippet.name),
+    description: snippet.vars.length > 0 ? `Snippet · biến: ${snippet.vars.join(", ")}` : "Snippet tái sử dụng",
+    template: () => expandSnippet(snippet),
+  }))
 }

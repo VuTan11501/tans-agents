@@ -2,6 +2,7 @@
 import { useState } from "react"
 import {
   Sparkles,
+  Bookmark,
   ChevronDown,
   Check,
   Plus,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
+import { SnippetsDialog } from "@/components/snippets-dialog"
 import { ThemeCustomizer } from "@/components/theme-customizer"
 import {
   DropdownMenu,
@@ -66,6 +68,7 @@ export function Header({
   clearUserKeys,
 }: HeaderProps) {
   const [apiKeysOpen, setApiKeysOpen] = useState(false)
+  const [snippetsOpen, setSnippetsOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
   const providerLabel = PROVIDERS[provider].label
   const isAutoModel = model === "auto"
@@ -171,6 +174,9 @@ export function Header({
             <IconBtn label="Prompt Library" onClick={onOpenPromptLibrary}>
               <Library className="h-3.5 w-3.5" />
             </IconBtn>
+            <IconBtn label="Snippet / Macro" onClick={() => setSnippetsOpen(true)}>
+              <Bookmark className="h-3.5 w-3.5" />
+            </IconBtn>
             <IconBtn label="Chế độ giọng nói" onClick={toggleVoiceMode}>
               <Mic className="h-3.5 w-3.5" />
             </IconBtn>
@@ -224,6 +230,9 @@ export function Header({
                 <DropdownMenuItem onClick={onOpenPromptLibrary}>
                   <Library className="mr-2 h-4 w-4" /> Prompt Library
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSnippetsOpen(true)}>
+                  <Bookmark className="mr-2 h-4 w-4" /> Snippet / Macro
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={toggleVoiceMode}>
                   <Mic className="mr-2 h-4 w-4" /> Chế độ giọng nói
                 </DropdownMenuItem>
@@ -264,6 +273,7 @@ export function Header({
           <ThemeCustomizer open={themeOpen} onOpenChange={setThemeOpen} />
         </div>
       </div>
+      <SnippetsDialog open={snippetsOpen} onOpenChange={setSnippetsOpen} />
       <ApiKeysDialog
         open={apiKeysOpen}
         onOpenChange={setApiKeysOpen}
