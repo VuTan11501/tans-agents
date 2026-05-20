@@ -5,11 +5,13 @@ import {
   MessageSquare,
   Plus,
   Trash2,
-  Github,
-  Info,
   Sparkles,
   Search,
   MoreHorizontal,
+  Pencil,
+  Copy as CopyIcon,
+  Check,
+  X as XIcon,
 } from "lucide-react"
 import {
   Sheet,
@@ -25,6 +27,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
@@ -38,6 +41,8 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onNewChat: () => void
   onDelete: (id: string) => void
+  onRename: (id: string, title: string) => void
+  onDuplicate: (id: string) => void
   onClearAll: () => void
   trigger: React.ReactNode
 }
@@ -81,6 +86,8 @@ export function Sidebar({
   onSelect,
   onNewChat,
   onDelete,
+  onRename,
+  onDuplicate,
   onClearAll,
   trigger,
 }: SidebarProps) {
@@ -154,6 +161,8 @@ export function Sidebar({
                             onOpenChange(false)
                           }}
                           onDelete={() => onDelete(s.id)}
+                          onRename={(title) => onRename(s.id, title)}
+                          onDuplicate={() => onDuplicate(s.id)}
                         />
                       ))}
                     </div>
@@ -176,24 +185,6 @@ export function Sidebar({
               <Trash2 className="h-3.5 w-3.5" /> Xóa toàn bộ lịch sử
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-xs" asChild>
-            <a
-              href="https://github.com/VuTan11501/tans-agents"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Github className="h-3.5 w-3.5" /> Source code trên GitHub
-            </a>
-          </Button>
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-xs" asChild>
-            <a
-              href="https://huggingface.co/spaces/Tan115/tans-agents-ui"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Info className="h-3.5 w-3.5" /> Về Tan&apos;s Agent
-            </a>
-          </Button>
         </div>
       </SheetContent>
     </Sheet>
@@ -205,12 +196,61 @@ function SessionItem({
   isActive,
   onSelect,
   onDelete,
+  onRename,
+  onDuplicate,
 }: {
   session: ChatSession
   isActive: boolean
   onSelect: () => void
   onDelete: () => void
+  onRename: (title: string) => void
+  onDuplicate: () => void
 }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(session.title)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  function commit() {
+    const t = draft.trim()
+    if (t && t !== session.title) onRename(t)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1">
+        <Input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") {
+              setDraft(session.title)
+              setEditing(false)
+            }
+          }}
+          onBlur={commit}
+          className="h-7 px-2 text-sm"
+        />
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={commit}>
+          <Check className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={() => {
+            setDraft(session.title)
+            setEditing(false)
+          }}
+        >
+          <XIcon className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -220,14 +260,20 @@ function SessionItem({
     >
       <button
         onClick={onSelect}
+        onDoubleClick={() => setEditing(true)}
         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
       >
         <span className="line-clamp-1 w-full text-sm">{session.title}</span>
         <span className="text-[10px] text-muted-foreground">
-          {timeAgo(session.updatedAt)} · {session.model.split("/").pop()}
+          {timeAgo(session.updatedAt)} · {session.messages.length} tin nhắn ·{" "}
+          {session.model.split("/").pop()}
         </span>
       </button>
-      <DropdownMenu>
+      <DropdownMenu
+        onOpenChange={(o) => {
+          if (!o) setConfirmDelete(false)
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -238,12 +284,27 @@ function SessionItem({
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem className="gap-2 text-xs" onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" /> Đổi tên
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2 text-xs" onClick={onDuplicate}>
+            <CopyIcon className="h-3.5 w-3.5" /> Nhân bản
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-2 text-xs text-destructive focus:text-destructive"
-            onClick={onDelete}
+            onSelect={(e) => {
+              if (!confirmDelete) {
+                e.preventDefault()
+                setConfirmDelete(true)
+              } else {
+                onDelete()
+              }
+            }}
           >
-            <Trash2 className="h-3.5 w-3.5" /> Xóa
+            <Trash2 className="h-3.5 w-3.5" />
+            {confirmDelete ? "Bấm lần nữa để xóa" : "Xóa"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

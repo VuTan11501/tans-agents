@@ -96,7 +96,37 @@ export function useChatHistory() {
     write([])
   }, [])
 
+  const rename = useCallback((id: string, title: string) => {
+    const t = title.trim().slice(0, 80) || "Cuộc trò chuyện mới"
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, title: t } : s))
+      write(next)
+      return next
+    })
+  }, [])
+
+  const duplicate = useCallback((id: string): string | null => {
+    let newId: string | null = null
+    setSessions((prev) => {
+      const orig = prev.find((s) => s.id === id)
+      if (!orig) return prev
+      newId =
+        Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+      const copy: ChatSession = {
+        ...orig,
+        id: newId,
+        title: orig.title + " (bản sao)",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      const next = [copy, ...prev]
+      write(next)
+      return next
+    })
+    return newId
+  }, [])
+
   const get = useCallback((id: string) => sessions.find((s) => s.id === id), [sessions])
 
-  return { sessions, upsert, remove, clearAll, get }
+  return { sessions, upsert, remove, rename, duplicate, clearAll, get }
 }

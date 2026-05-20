@@ -39,16 +39,15 @@ export function Chat() {
   } = useChat({
     api: "/api/chat",
     body: { provider, model },
-    id: sessionId,
   })
 
   const history = useChatHistory()
 
-  // Persist current conversation whenever it changes (debounced).
-  // Skip while streaming to avoid hammering localStorage on every token.
+  // Persist current conversation whenever it changes (debounced 600ms).
+  // We persist mid-stream too so a refresh doesn't lose in-flight assistant text;
+  // 600ms keeps localStorage writes manageable even with token-by-token updates.
   useEffect(() => {
     if (messages.length === 0) return
-    if (isLoading) return
     if (skipNextPersistRef.current) {
       skipNextPersistRef.current = false
       return
@@ -61,10 +60,10 @@ export function Chat() {
         provider,
         model,
       })
-    }, 400)
+    }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, isLoading, sessionId, provider, model])
+  }, [messages, sessionId, provider, model])
 
   // Auto-scroll
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
@@ -129,6 +128,11 @@ export function Chat() {
         onSelect={handleSelectSession}
         onNewChat={handleNewChat}
         onDelete={handleDeleteSession}
+        onRename={history.rename}
+        onDuplicate={(id) => {
+          const newId = history.duplicate(id)
+          if (newId) handleSelectSession(newId)
+        }}
         onClearAll={handleClearAll}
         trigger={<span className="hidden" />}
       />
