@@ -1,5 +1,5 @@
 "use client"
-import { Sparkles, ChevronDown, Github, Check, Plus } from "lucide-react"
+import { Sparkles, ChevronDown, Check, Plus, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -19,20 +19,44 @@ interface HeaderProps {
   onChange: (p: ProviderKey, m: string) => void
   onNewChat: () => void
   canNewChat: boolean
+  onOpenMenu: () => void
 }
 
-export function Header({ provider, model, onChange, onNewChat, canNewChat }: HeaderProps) {
+export function Header({
+  provider,
+  model,
+  onChange,
+  onNewChat,
+  canNewChat,
+  onOpenMenu,
+}: HeaderProps) {
   const providerLabel = PROVIDERS[provider].label
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-2 px-4">
-        {/* Brand */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-gradient-to-br from-violet-500/20 via-fuchsia-500/20 to-orange-500/20">
-            <Sparkles className="h-3.5 w-3.5" />
+        {/* Left: Hamburger + brand */}
+        <div className="flex items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={onOpenMenu}
+                aria-label="Mở menu"
+              >
+                <Menu className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Lịch sử & menu</TooltipContent>
+          </Tooltip>
+          <div className="hidden items-center gap-2 sm:flex">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-gradient-to-br from-violet-500/20 via-fuchsia-500/20 to-orange-500/20">
+              <Sparkles className="h-3.5 w-3.5" />
+            </div>
+            <span className="text-sm font-semibold tracking-tight">Tan&apos;s Agent</span>
           </div>
-          <span className="text-sm font-semibold tracking-tight">Tan&apos;s Agent</span>
         </div>
 
         {/* Center: Model picker */}
@@ -74,38 +98,22 @@ export function Header({ provider, model, onChange, onNewChat, canNewChat }: Hea
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={onNewChat}
-                disabled={!canNewChat}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">New chat</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Bắt đầu cuộc trò chuyện mới</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                <a
-                  href="https://github.com/VuTan11501/tans-agents"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Github className="h-4 w-4" />
-                </a>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>View on GitHub</TooltipContent>
-          </Tooltip>
-        </div>
+        {/* Right: New chat */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 px-2.5 text-xs"
+              onClick={onNewChat}
+              disabled={!canNewChat}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Bắt đầu cuộc trò chuyện mới</TooltipContent>
+        </Tooltip>
       </div>
     </header>
   )

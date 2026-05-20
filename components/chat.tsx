@@ -1,27 +1,72 @@
 "use client"
 
 import { useChat } from "ai/react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Header } from "@/components/header"
+import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
 import { MessageBubble } from "@/components/message"
 import { Composer } from "@/components/composer"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
+
+function newId() {
+  return (
+    Date.now().toString(36) +
+    Math.random().toString(36).slice(2, 8)
+  )
+}
 
 export function Chat() {
-  // Default to Groq: free tier is far more generous (30 req/min) and it
-  // streams token-by-token, giving the best ChatGPT-like feel out of the box.
   const [provider, setProvider] = useState<ProviderKey>("groq")
   const [model, setModel] = useState<string>(PROVIDERS.groq.default)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sessionId, setSessionId] = useState<string>(() => newId())
   const scrollEndRef = useRef<HTMLDivElement>(null)
+  const skipNextPersistRef = useRef(false)
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, stop, error, reload } = useChat({
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading,
+    setMessages,
+    setInput,
+    stop,
+    error,
+    reload,
+  } = useChat({
     api: "/api/chat",
     body: { provider, model },
+    id: sessionId,
   })
 
-  // Auto-scroll: follow the bottom while assistant is streaming new tokens.
-  // Tracks length of last message content so we rerun on every token, not just new messages.
+  const history = useChatHistory()
+
+  // Persist current conversation whenever it changes (debounced).
+  // Skip while streaming to avoid hammering localStorage on every token.
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (isLoading) return
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false
+      return
+    }
+    const t = setTimeout(() => {
+      history.upsert({
+        id: sessionId,
+        title: deriveTitle(messages),
+        messages,
+        provider,
+        model,
+      })
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, sessionId, provider, model])
+
+  // Auto-scroll
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
   const streamingLen = lastAssistant?.content?.length ?? 0
   useEffect(() => {
@@ -33,17 +78,68 @@ export function Chat() {
     setModel(m)
   }
 
+  const handleNewChat = useCallback(() => {
+    skipNextPersistRef.current = true
+    setMessages([])
+    setInput("")
+    setSessionId(newId())
+  }, [setMessages, setInput])
+
+  const handleSelectSession = useCallback(
+    (id: string) => {
+      const s = history.get(id)
+      if (!s) return
+      skipNextPersistRef.current = true
+      setSessionId(s.id)
+      setMessages(s.messages as any)
+      setProvider(s.provider as ProviderKey)
+      setModel(s.model)
+    },
+    [history, setMessages]
+  )
+
+  const handleDeleteSession = useCallback(
+    (id: string) => {
+      history.remove(id)
+      if (id === sessionId) {
+        skipNextPersistRef.current = true
+        setMessages([])
+        setSessionId(newId())
+      }
+    },
+    [history, sessionId, setMessages]
+  )
+
+  const handleClearAll = useCallback(() => {
+    history.clearAll()
+    skipNextPersistRef.current = true
+    setMessages([])
+    setSessionId(newId())
+  }, [history, setMessages])
+
   return (
     <div className="relative flex h-[100dvh] flex-col bg-background">
-      {/* Dot grid background */}
       <div className="bg-dot-grid pointer-events-none fixed inset-0 -z-10 opacity-[0.15]" />
+
+      <Sidebar
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        sessions={history.sessions}
+        currentId={sessionId}
+        onSelect={handleSelectSession}
+        onNewChat={handleNewChat}
+        onDelete={handleDeleteSession}
+        onClearAll={handleClearAll}
+        trigger={<span className="hidden" />}
+      />
 
       <Header
         provider={provider}
         model={model}
         onChange={handleProviderChange}
-        onNewChat={() => setMessages([])}
+        onNewChat={handleNewChat}
         canNewChat={messages.length > 0 && !isLoading}
+        onOpenMenu={() => setSidebarOpen(true)}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -61,19 +157,19 @@ export function Chat() {
                     role={m.role}
                     content={m.content}
                     parts={m.parts}
-                    isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
+                    isStreaming={
+                      isLoading && i === messages.length - 1 && m.role === "assistant"
+                    }
                     isLastAssistant={isLastAssistant}
                     onRegenerate={() => reload()}
                     onEditUser={
                       m.role === "user"
                         ? (newContent) => {
-                            // Truncate to this user msg with edited content, then resend
                             const truncated = messages.slice(0, i)
                             setMessages([
                               ...truncated,
                               { ...m, content: newContent, parts: undefined as any },
                             ])
-                            // reload() generates a fresh assistant response for the last user msg
                             setTimeout(() => reload(), 0)
                           }
                         : undefined
@@ -89,7 +185,9 @@ export function Chat() {
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                       <div className="font-medium">Có lỗi khi gọi AI:</div>
-                      <div className="mt-1 whitespace-pre-wrap text-xs opacity-90">{error.message}</div>
+                      <div className="mt-1 whitespace-pre-wrap text-xs opacity-90">
+                        {error.message}
+                      </div>
                     </div>
                     <button
                       onClick={() => reload()}
