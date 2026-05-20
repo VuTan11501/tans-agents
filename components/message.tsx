@@ -3,7 +3,7 @@ import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, use
 import type { ReactElement, ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Check, Copy, ExternalLink, Heart, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
+import { Check, Copy, ExternalLink, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
@@ -332,10 +332,9 @@ function CopyAction({ text }: { text: string }) {
 
 export function ThinkingDots() {
   return (
-    <div className="flex items-center gap-1.5 py-2">
-      <span className="dot-1 h-2 w-2 rounded-full bg-muted-foreground/60" />
-      <span className="dot-2 h-2 w-2 rounded-full bg-muted-foreground/60" />
-      <span className="dot-3 h-2 w-2 rounded-full bg-muted-foreground/60" />
+    <div className="flex items-center py-2" role="status" aria-label="Đang tải">
+      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      <span className="sr-only">Đang tải...</span>
     </div>
   )
 }
