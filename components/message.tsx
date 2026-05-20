@@ -90,25 +90,33 @@ export function MessageBubble({
   }, [isUser])
 
   function handleAssistantMouseUp() {
-    const selection = window.getSelection()
-    const container = assistantMessageRef.current
-    const selectedText = selection?.toString().trim()
-    if (!selection || !container || !selectedText || !isSelectionInside(selection, container) || selection.rangeCount === 0) {
-      setQuoteButton(null)
-      return
-    }
+    // Đợi 1 tick để browser kết thúc cập nhật selection (đặc biệt với double/triple-click trên <li>).
+    setTimeout(() => {
+      const selection = window.getSelection()
+      const container = assistantMessageRef.current
+      const selectedText = selection?.toString().trim()
+      if (!selection || !container || !selectedText || !isSelectionInside(selection, container) || selection.rangeCount === 0) {
+        setQuoteButton(null)
+        return
+      }
 
-    const range = selection.getRangeAt(0)
-    const rect = range.getClientRects()[0] ?? range.getBoundingClientRect()
-    if (!rect || (rect.width === 0 && rect.height === 0)) {
-      setQuoteButton(null)
-      return
-    }
+      const range = selection.getRangeAt(0)
+      // Với selection trong <li> (list-disc/decimal), client rect đầu tiên có thể là rect rỗng
+      // tại biên — dùng bounding box bao trùm cả range, fallback sang rect non-zero đầu tiên.
+      const rects = Array.from(range.getClientRects())
+      const nonEmpty = rects.find((r) => r.width > 0 || r.height > 0)
+      const rect = range.getBoundingClientRect()
+      const usable = rect.width > 0 || rect.height > 0 ? rect : nonEmpty
+      if (!usable) {
+        setQuoteButton(null)
+        return
+      }
 
-    const aboveSelection = rect.top > 48
-    const left = Math.min(Math.max(rect.left + rect.width / 2, 80), window.innerWidth - 80)
-    const top = aboveSelection ? rect.top - 42 : rect.bottom + 8
-    setQuoteButton({ text: selectedText, left, top })
+      const aboveSelection = usable.top > 48
+      const left = Math.min(Math.max(usable.left + usable.width / 2, 80), window.innerWidth - 80)
+      const top = aboveSelection ? usable.top - 42 : usable.bottom + 8
+      setQuoteButton({ text: selectedText, left, top })
+    }, 0)
   }
 
   function dispatchQuote() {
@@ -197,7 +205,7 @@ export function MessageBubble({
         <Sparkles className="h-4 w-4 text-foreground" />
       </div>
 
-      <div ref={assistantMessageRef} onMouseUp={handleAssistantMouseUp} className="min-w-0 flex-1 space-y-3 pt-1">
+      <div ref={assistantMessageRef} onMouseUp={handleAssistantMouseUp} onTouchEnd={handleAssistantMouseUp} className="min-w-0 flex-1 space-y-3 pt-1">
         {quoteButton && (
           <div
             className="fixed z-40 -translate-x-1/2"
