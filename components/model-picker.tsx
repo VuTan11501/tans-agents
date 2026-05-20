@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { UserKeys } from "@/lib/user-keys"
 import { cn } from "@/lib/utils"
@@ -105,71 +106,75 @@ export function ModelPicker({
   )
 
   const content = (
-    <DropdownMenuContent align={align} className={cn("w-72", contentClassName)}>
-      {showAuto && provider && (
-        <>
-          <DropdownMenuItem
-            onClick={() => onChange(provider, "auto")}
-            className={cn("text-xs", isAutoModel && "bg-accent")}
-          >
-            <span className="mr-2 text-base">🤖</span>
-            <span className="flex-1">Auto (chọn theo prompt)</span>
-            {isAutoModel && <Check className="h-3 w-3" />}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-        </>
-      )}
-      {Object.entries(PROVIDERS).map(([pKey, p]) => {
-        const isGoogle = pKey === "google"
-        const modelList: readonly string[] =
-          isGoogle && discoveredGoogleModels && discoveredGoogleModels.length > 0
-            ? Array.from(new Set([...p.models, ...discoveredGoogleModels]))
-            : p.models
-        return (
-          <div key={pKey}>
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <span>{p.label}</span>
-              {pKey === provider && <Check className="h-3 w-3" />}
-            </DropdownMenuLabel>
-            {modelList.map((m) => {
-              const selected = pKey === provider && m === model
-              const onlyByModel = !provider && m === model
-              return (
-                <DropdownMenuItem
-                  key={m}
-                  onClick={() => onChange(pKey as ProviderKey, m)}
-                  className={cn("font-mono text-xs", (selected || onlyByModel) && "bg-accent")}
-                >
-                  <span className="flex-1">{m}</span>
-                  {(selected || onlyByModel) && <Check className="h-3 w-3" />}
-                </DropdownMenuItem>
-              )
-            })}
-            {isGoogle && (
+    <DropdownMenuContent align={align} className={cn("w-72 p-0", contentClassName)}>
+      <ScrollArea className="max-h-[60vh]">
+        <div className="p-1">
+          {showAuto && provider && (
+            <>
               <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  discoverGoogleModels()
-                }}
-                className="text-[11px] text-muted-foreground"
-                disabled={discoveringGoogle}
+                onClick={() => onChange(provider, "auto")}
+                className={cn("text-xs", isAutoModel && "bg-accent")}
               >
-                {discoveringGoogle
-                  ? "Đang quét..."
-                  : discoveredGoogleModels
-                  ? `↻ Quét lại (${discoveredGoogleModels.length} model)`
-                  : "↻ Quét live model có sẵn với key của bạn"}
+                <span className="mr-2 text-base">🤖</span>
+                <span className="flex-1">Auto (chọn theo prompt)</span>
+                {isAutoModel && <Check className="h-3 w-3" />}
               </DropdownMenuItem>
-            )}
-            {isGoogle && discoverError && (
-              <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">
-                {discoverError}
+              <DropdownMenuSeparator />
+            </>
+          )}
+          {Object.entries(PROVIDERS).map(([pKey, p]) => {
+            const isGoogle = pKey === "google"
+            const modelList: readonly string[] =
+              isGoogle && discoveredGoogleModels && discoveredGoogleModels.length > 0
+                ? Array.from(new Set([...p.models, ...discoveredGoogleModels]))
+                : p.models
+            return (
+              <div key={pKey}>
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>{p.label}</span>
+                  {pKey === provider && <Check className="h-3 w-3" />}
+                </DropdownMenuLabel>
+                {modelList.map((m) => {
+                  const selected = pKey === provider && m === model
+                  const onlyByModel = !provider && m === model
+                  return (
+                    <DropdownMenuItem
+                      key={m}
+                      onClick={() => onChange(pKey as ProviderKey, m)}
+                      className={cn("font-mono text-xs", (selected || onlyByModel) && "bg-accent")}
+                    >
+                      <span className="flex-1 break-all">{m}</span>
+                      {(selected || onlyByModel) && <Check className="h-3 w-3 shrink-0" />}
+                    </DropdownMenuItem>
+                  )
+                })}
+                {isGoogle && (
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      discoverGoogleModels()
+                    }}
+                    className="text-[11px] text-muted-foreground"
+                    disabled={discoveringGoogle}
+                  >
+                    {discoveringGoogle
+                      ? "Đang quét..."
+                      : discoveredGoogleModels
+                      ? `↻ Quét lại (${discoveredGoogleModels.length} model)`
+                      : "↻ Quét live model có sẵn với key của bạn"}
+                  </DropdownMenuItem>
+                )}
+                {isGoogle && discoverError && (
+                  <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">
+                    {discoverError}
+                  </div>
+                )}
+                <DropdownMenuSeparator />
               </div>
-            )}
-            <DropdownMenuSeparator />
-          </div>
-        )
-      })}
+            )
+          })}
+        </div>
+      </ScrollArea>
     </DropdownMenuContent>
   )
 

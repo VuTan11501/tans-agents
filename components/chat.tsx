@@ -54,10 +54,24 @@ type ActiveAbCompare = {
 }
 
 const AB_STORAGE_KEY = "tans:ab"
+const MODEL_STORAGE_KEY = "tans:provider-model"
+
+function readSavedProviderModel(): { provider: ProviderKey; model: string } {
+  if (typeof window === "undefined") return { provider: "groq", model: PROVIDERS.groq.default }
+  try {
+    const raw = window.localStorage.getItem(MODEL_STORAGE_KEY)
+    if (!raw) return { provider: "groq", model: PROVIDERS.groq.default }
+    const saved = JSON.parse(raw)
+    const p = saved?.provider as ProviderKey
+    const m = saved?.model as string
+    if (p && PROVIDERS[p] && typeof m === "string" && m) return { provider: p, model: m }
+  } catch {}
+  return { provider: "groq", model: PROVIDERS.groq.default }
+}
 
 export function Chat() {
-  const [provider, setProvider] = useState<ProviderKey>("groq")
-  const [model, setModel] = useState<string>(PROVIDERS.groq.default)
+  const [provider, setProvider] = useState<ProviderKey>(() => readSavedProviderModel().provider)
+  const [model, setModel] = useState<string>(() => readSavedProviderModel().model)
   const [persona, setPersona] = useState<PersonaId>("default")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -262,6 +276,11 @@ export function Chat() {
   function handleProviderChange(p: ProviderKey, m: string) {
     setProvider(p)
     setModel(m)
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify({ provider: p, model: m }))
+      } catch {}
+    }
   }
 
   const startAbComparison = useCallback(
