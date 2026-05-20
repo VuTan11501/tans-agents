@@ -71,7 +71,7 @@ export function ErrorLogDialog({ open, onOpenChange }: ErrorLogDialogProps) {
                         {entry.request.provider ?? "unknown"} / {entry.request.model ?? "unknown"}
                       </span>
                     </div>
-                    <div className="whitespace-pre-wrap text-sm text-destructive">{entry.error}</div>
+                    <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-destructive">{entry.error}</div>
                   </summary>
                   <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
                     {JSON.stringify(entry.request, null, 2)}

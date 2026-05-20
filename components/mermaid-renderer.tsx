@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useId, useMemo, useState } from "react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 type MermaidRendererProps = {
   code: string
@@ -71,9 +72,11 @@ export function MermaidRenderer({ code, title }: MermaidRendererProps) {
           <div className="h-40 w-full animate-pulse rounded-lg bg-muted" />
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          <div className="font-medium">Không thể vẽ sơ đồ Mermaid</div>
-          <pre className="mt-2 whitespace-pre-wrap text-xs">{error}</pre>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 text-sm text-destructive">
+          <div className="px-3 pt-3 font-medium">Không thể vẽ sơ đồ Mermaid</div>
+          <ScrollArea className="max-h-40">
+            <pre className="px-3 pb-3 pt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs">{error}</pre>
+          </ScrollArea>
         </div>
       ) : (
         <div

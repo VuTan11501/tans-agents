@@ -242,7 +242,7 @@ export function Header({
                 <DropdownMenuItem onClick={() => setSnippetsOpen(true)}>
                   <Bookmark className="mr-2 h-4 w-4" /> Snippet / Macro
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={toggleVoiceMode}>
+                <DropdownMenuItem onClick={toggleVoiceMode} className="hidden md:flex">
                   <Mic className="mr-2 h-4 w-4" /> Chế độ giọng nói
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setThemeOpen(true)}>

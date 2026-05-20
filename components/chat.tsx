@@ -14,6 +14,7 @@ import { BulkActions } from "@/components/bulk-actions"
 import { MemoryDialog } from "@/components/memory-dialog"
 import { PromptLibraryDialog } from "@/components/prompt-library-dialog"
 import { ErrorLogDialog } from "@/components/error-log-dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { AbCompare, type AbPaneState } from "@/components/ab-compare"
 import { AbToggle, type AbModeState } from "@/components/ab-toggle"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
@@ -731,11 +732,13 @@ export function Chat() {
                     !
                   </div>
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                      <div className="font-medium">Có lỗi khi gọi AI:</div>
-                      <div className="mt-1 whitespace-pre-wrap text-xs opacity-90">
-                        {error.message}
-                      </div>
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
+                      <div className="px-3 pt-2 font-medium">Có lỗi khi gọi AI:</div>
+                      <ScrollArea className="max-h-40">
+                        <div className="px-3 pb-2 pt-1 text-xs opacity-90 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                          {error.message}
+                        </div>
+                      </ScrollArea>
                     </div>
                     <button
                       onClick={() => reload()}

@@ -82,6 +82,10 @@ lib/
 - Toast: dự án **không** dùng `sonner`. Dùng pattern toast local trong `sidebar.tsx` hoặc `Tooltip` (xem `share-link` impl).
 - Header có nhiều nút icon → đã thêm `flex-1 overflow-hidden` ở container center + truncate trên PersonaPicker. Khi thêm nút mới phải đảm bảo `shrink-0` để không phá layout.
 - Persona label: max `88px` truncate.
+- **Long text & error boxes**: bất kỳ container nào hiển thị message lỗi, URL dài, JSON, hoặc nội dung từ user/API đều phải:
+  1. Dùng `<ScrollArea className="max-h-XX">` (`@/components/ui/scroll-area`) thay vì `overflow-auto` thuần khi cần giới hạn chiều cao + có scrollbar đẹp.
+  2. Áp `break-words [overflow-wrap:anywhere]` (hoặc `whitespace-pre-wrap break-words`) lên text bên trong để URL/token dài tự xuống dòng — **không bao giờ** để text tràn ngang khỏi `border` của box.
+  3. Tách phần header (label) ra ngoài ScrollArea để label luôn cố định, chỉ phần body cuộn.
 
 ### 7. Testing & build
 

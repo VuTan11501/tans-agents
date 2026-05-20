@@ -228,7 +228,7 @@ export function VoiceMode() {
         <div className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs">
           {transcript && <p><span className="font-medium">Đang nghe:</span> {transcript}</p>}
           {!transcript && lastSent && <p><span className="font-medium">Đã gửi:</span> {lastSent}</p>}
-          {error && <p className="mt-1 text-destructive">{error}</p>}
+          {error && <p className="mt-1 break-words [overflow-wrap:anywhere] text-destructive">{error}</p>}
         </div>
       )}
 

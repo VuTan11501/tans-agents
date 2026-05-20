@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm"
 import { Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
 export type AbPaneState = {
@@ -43,9 +44,11 @@ function AbCard({ label, state, onPick }: { label: string; state: AbPaneState; o
       </CardHeader>
       <CardContent className="min-h-40 p-3">
         {state.error ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {state.error}
-          </div>
+          <ScrollArea className="max-h-40 rounded-md border border-destructive/30 bg-destructive/5">
+            <div className="px-3 py-2 text-xs text-destructive break-words [overflow-wrap:anywhere]">
+              {state.error}
+            </div>
+          </ScrollArea>
         ) : state.content ? (
           <div className="prose-chat text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{state.content}</ReactMarkdown>
