@@ -8,7 +8,6 @@ import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
-import { ReadingMode } from "@/components/reading-mode"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
 import { ChatSearch } from "@/components/chat-search"
 import { BulkActions } from "@/components/bulk-actions"
@@ -774,7 +773,6 @@ export function Chat() {
         </div>
       </div>
 
-      <ReadingMode />
       <BulkActions
         selectedCount={selectedIds.size}
         selectionMode={selectionMode}

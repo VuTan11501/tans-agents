@@ -228,24 +228,3 @@
 [data-density="comfortable"] [data-chat-messages] > * + * {
   margin-top: 2.5rem;
 }
-
-/* Reading mode */
-[data-reading="on"] [data-sidebar],
-[data-reading="on"] aside {
-  display: none !important;
-}
-[data-reading="on"] [data-header-chrome],
-[data-reading="on"] header {
-  display: none !important;
-}
-[data-reading="on"] main {
-  max-width: 100%;
-}
-[data-reading="on"] [data-chat-messages] {
-  max-width: 65ch;
-  margin: 0 auto;
-  font-size: 1.05rem;
-}
-[data-reading="on"] [data-composer-extra] {
-  display: none !important;
-}
