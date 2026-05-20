@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import type { CSSProperties, ReactNode } from "react"
 import {
   MessageSquare,
   Plus,
@@ -13,6 +14,9 @@ import {
   Download,
   Check,
   X as XIcon,
+  Star,
+  StarOff,
+  Tags,
 } from "lucide-react"
 import {
   Sheet,
@@ -34,7 +38,11 @@ import {
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { downloadBlob, safeFilename, sessionToJSON, sessionToMarkdown } from "@/lib/export"
-import type { ChatSession } from "@/hooks/use-chat-history"
+import {
+  setSessionTags,
+  togglePinnedSession,
+  type ChatSession,
+} from "@/hooks/use-chat-history"
 
 interface SidebarProps {
   open: boolean
@@ -47,7 +55,7 @@ interface SidebarProps {
   onRename: (id: string, title: string) => void
   onDuplicate: (id: string) => void
   onClearAll: () => void
-  trigger: React.ReactNode
+  trigger: ReactNode
 }
 
 function timeAgo(ts: number) {
@@ -60,25 +68,105 @@ function timeAgo(ts: number) {
   return new Date(ts).toLocaleDateString("vi-VN")
 }
 
-function groupSessions(sessions: ChatSession[]) {
+function groupSessions(sessions: ChatSession[]): Array<[string, ChatSession[]]> {
   const now = Date.now()
   const day = 86400_000
-  const groups: Record<string, ChatSession[]> = {
-    "Hôm nay": [],
-    "Hôm qua": [],
-    "7 ngày trước": [],
-    "30 ngày trước": [],
-    "Cũ hơn": [],
-  }
+  const pinned: ChatSession[] = []
+  const timeGroups: Array<[string, ChatSession[]]> = [
+    ["Hôm nay", []],
+    ["Hôm qua", []],
+    ["7 ngày trước", []],
+    ["30 ngày trước", []],
+    ["Cũ hơn", []],
+  ]
+
   for (const s of sessions) {
+    if (s.pinned) {
+      pinned.push(s)
+      continue
+    }
+
     const age = now - s.updatedAt
-    if (age < day) groups["Hôm nay"].push(s)
-    else if (age < day * 2) groups["Hôm qua"].push(s)
-    else if (age < day * 7) groups["7 ngày trước"].push(s)
-    else if (age < day * 30) groups["30 ngày trước"].push(s)
-    else groups["Cũ hơn"].push(s)
+    if (age < day) timeGroups[0][1].push(s)
+    else if (age < day * 2) timeGroups[1][1].push(s)
+    else if (age < day * 7) timeGroups[2][1].push(s)
+    else if (age < day * 30) timeGroups[3][1].push(s)
+    else timeGroups[4][1].push(s)
   }
-  return groups
+
+  return pinned.length > 0 ? [["📌 Đã ghim", pinned], ...timeGroups] : timeGroups
+}
+
+function textFromContent(content: unknown): string {
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) return content.map(textFromContent).filter(Boolean).join(" ")
+  if (content && typeof content === "object") {
+    const value = content as { text?: unknown; content?: unknown }
+    return textFromContent(value.text ?? value.content ?? "")
+  }
+  return ""
+}
+
+function sessionMessageText(session: ChatSession) {
+  return session.messages.map((m) => textFromContent(m?.content)).join(" ")
+}
+
+function getMessageSnippet(session: ChatSession, query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return null
+
+  const text = sessionMessageText(session).replace(/\s+/g, " ").trim()
+  const index = text.toLowerCase().indexOf(normalizedQuery)
+  if (index < 0) return null
+
+  const radius = 30
+  const start = Math.max(0, index - radius)
+  const end = Math.min(text.length, index + normalizedQuery.length + radius)
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`
+}
+
+function highlightText(text: string, query: string): ReactNode {
+  const q = query.trim()
+  if (!q) return text
+
+  const parts: ReactNode[] = []
+  const lowerText = text.toLowerCase()
+  const lowerQuery = q.toLowerCase()
+  let cursor = 0
+  let index = lowerText.indexOf(lowerQuery)
+
+  while (index >= 0) {
+    if (index > cursor) parts.push(text.slice(cursor, index))
+    parts.push(
+      <mark key={`${index}-${parts.length}`} className="rounded bg-yellow-200 px-0.5 text-yellow-950 dark:bg-yellow-400/30 dark:text-yellow-100">
+        {text.slice(index, index + q.length)}
+      </mark>
+    )
+    cursor = index + q.length
+    index = lowerText.indexOf(lowerQuery, cursor)
+  }
+
+  if (cursor < text.length) parts.push(text.slice(cursor))
+  return parts
+}
+
+function tagHue(tag: string) {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) % 360
+  return hash
+}
+
+function tagStyle(tag: string): CSSProperties {
+  const hue = tagHue(tag)
+  return {
+    backgroundColor: `hsl(${hue} 80% 92%)`,
+    borderColor: `hsl(${hue} 65% 78%)`,
+    color: `hsl(${hue} 40% 28%)`,
+  }
+}
+
+function parseTags(input: string) {
+  return Array.from(new Set(input.split(",").map((tag) => tag.trim()).filter(Boolean)))
 }
 
 export function Sidebar({
@@ -95,9 +183,29 @@ export function Sidebar({
   trigger,
 }: SidebarProps) {
   const [q, setQ] = useState("")
-  const filtered = q
-    ? sessions.filter((s) => s.title.toLowerCase().includes(q.toLowerCase()))
-    : sessions
+  const [activeTag, setActiveTag] = useState<string | null>(null)
+  const allTags = useMemo(
+    () => Array.from(new Set(sessions.flatMap((s) => s.tags ?? []))).sort((a, b) => a.localeCompare(b, "vi")),
+    [sessions]
+  )
+  const { filtered, snippets } = useMemo(() => {
+    const query = q.trim().toLowerCase()
+    const snippetMap = new Map<string, string>()
+    const list = sessions.filter((s) => {
+      if (activeTag && !(s.tags ?? []).includes(activeTag)) return false
+      if (!query) return true
+
+      const titleMatches = s.title.toLowerCase().includes(query)
+      if (titleMatches) return true
+
+      const snippet = getMessageSnippet(s, query)
+      if (!snippet) return false
+      snippetMap.set(s.id, snippet)
+      return true
+    })
+
+    return { filtered: list, snippets: snippetMap }
+  }, [activeTag, q, sessions])
   const groups = groupSessions(filtered)
 
   return (
@@ -125,13 +233,35 @@ export function Sidebar({
           </SheetClose>
         </div>
 
-        <div className="px-4">
+        <div className="space-y-2 px-4">
+          {allTags.length > 0 && (
+            <div className="flex gap-1 overflow-x-auto pb-0.5">
+              {allTags.map((tag) => {
+                const active = activeTag === tag
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setActiveTag(active ? null : tag)}
+                    className={cn(
+                      "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-80",
+                      active && "ring-1 ring-primary ring-offset-1 ring-offset-background"
+                    )}
+                    style={tagStyle(tag)}
+                    title={`Lọc theo nhãn ${tag}`}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm cuộc trò chuyện…"
+              placeholder="Tìm tiêu đề hoặc nội dung…"
               className="h-9 pl-8 text-sm"
             />
           </div>
@@ -145,8 +275,13 @@ export function Sidebar({
                 Chưa có cuộc trò chuyện nào. Bắt đầu gõ để tạo cái đầu tiên.
               </p>
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+              <Search className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-xs text-muted-foreground">Không tìm thấy cuộc trò chuyện phù hợp.</p>
+            </div>
           ) : (
-            Object.entries(groups).map(
+            groups.map(
               ([label, list]) =>
                 list.length > 0 && (
                   <div key={label} className="mb-2">
@@ -159,6 +294,8 @@ export function Sidebar({
                           key={s.id}
                           session={s}
                           isActive={s.id === currentId}
+                          searchQuery={q}
+                          messageSnippet={snippets.get(s.id)}
                           onSelect={() => {
                             onSelect(s.id)
                             onOpenChange(false)
@@ -201,6 +338,8 @@ export function Sidebar({
 function SessionItem({
   session,
   isActive,
+  searchQuery,
+  messageSnippet,
   onSelect,
   onDelete,
   onRename,
@@ -208,6 +347,8 @@ function SessionItem({
 }: {
   session: ChatSession
   isActive: boolean
+  searchQuery: string
+  messageSnippet?: string
   onSelect: () => void
   onDelete: () => void
   onRename: (title: string) => void
@@ -216,6 +357,12 @@ function SessionItem({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  function handleSetTags() {
+    const input = prompt("Nhập nhãn, phân tách bằng dấu phẩy", (session.tags ?? []).join(", "))
+    if (input === null) return
+    setSessionTags(session.id, parseTags(input))
+  }
 
   function commit() {
     const t = draft.trim()
@@ -270,10 +417,29 @@ function SessionItem({
         onDoubleClick={() => setEditing(true)}
         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
       >
-        <span className="line-clamp-1 w-full text-sm">{session.title}</span>
+        <span className="flex w-full min-w-0 items-center gap-1">
+          <span className="line-clamp-1 min-w-0 text-sm">{session.title}</span>
+          {(session.tags ?? []).slice(0, 2).map((tag) => (
+            <span
+              key={tag}
+              className="shrink-0 rounded-full border px-1.5 py-0 text-[9px] font-medium leading-4"
+              style={tagStyle(tag)}
+            >
+              {tag}
+            </span>
+          ))}
+          {(session.tags?.length ?? 0) > 2 && (
+            <span className="shrink-0 text-[9px] text-muted-foreground">+{session.tags!.length - 2}</span>
+          )}
+        </span>
         <span className="text-[10px] text-muted-foreground">
-          {timeAgo(session.updatedAt)} · {session.messages.length} tin nhắn ·{" "}
-          {session.model.split("/").pop()}
+          {messageSnippet ? (
+            <>{highlightText(messageSnippet, searchQuery)}</>
+          ) : (
+            <>
+              {timeAgo(session.updatedAt)} · {session.messages.length} tin nhắn · {session.model.split("/").pop()}
+            </>
+          )}
         </span>
       </button>
       <DropdownMenu
@@ -292,6 +458,13 @@ function SessionItem({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem className="gap-2 text-xs" onClick={() => togglePinnedSession(session.id)}>
+            {session.pinned ? <StarOff className="h-3.5 w-3.5" /> : <Star className="h-3.5 w-3.5" />}
+            {session.pinned ? "Bỏ ghim" : "Ghim"}
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2 text-xs" onClick={handleSetTags}>
+            <Tags className="h-3.5 w-3.5" /> Đặt nhãn...
+          </DropdownMenuItem>
           <DropdownMenuItem className="gap-2 text-xs" onClick={() => setEditing(true)}>
             <Pencil className="h-3.5 w-3.5" /> Đổi tên
           </DropdownMenuItem>

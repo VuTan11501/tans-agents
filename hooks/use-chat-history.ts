@@ -9,9 +9,12 @@ export interface ChatSession {
   model: string
   createdAt: number
   updatedAt: number
+  pinned?: boolean
+  tags?: string[]
 }
 
 const STORAGE_KEY = "tans-agents:chat-history-v1"
+const HISTORY_CHANGED_EVENT = "tans-agents:chat-history-changed"
 const MAX_SESSIONS = 50
 
 function read(): ChatSession[] {
@@ -41,6 +44,35 @@ function write(sessions: ChatSession[]) {
   }
 }
 
+function notifyChanged() {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(HISTORY_CHANGED_EVENT))
+}
+
+function normalizeTags(tags: string[]) {
+  return Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean)))
+}
+
+function mutateStoredSessions(mutator: (sessions: ChatSession[]) => ChatSession[]) {
+  const next = mutator(read())
+  write(next)
+  notifyChanged()
+  return next
+}
+
+export function togglePinnedSession(id: string) {
+  mutateStoredSessions((sessions) =>
+    sessions.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s))
+  )
+}
+
+export function setSessionTags(id: string, tags: string[]) {
+  const normalized = normalizeTags(tags)
+  mutateStoredSessions((sessions) =>
+    sessions.map((s) => (s.id === id ? { ...s, tags: normalized } : s))
+  )
+}
+
 export function deriveTitle(messages: any[]): string {
   const firstUser = messages.find((m) => m.role === "user")
   const text = (firstUser?.content || "").toString().trim().replace(/\s+/g, " ")
@@ -61,8 +93,13 @@ export function useChatHistory() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) setSessions(read())
     }
+    const onHistoryChanged = () => setSessions(read())
     window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
+    window.addEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged)
+    }
   }, [])
 
   const upsert = useCallback(
@@ -71,6 +108,7 @@ export function useChatHistory() {
       setSessions((prev) => {
         const existing = prev.find((s) => s.id === session.id)
         const merged: ChatSession = {
+          ...existing,
           ...session,
           createdAt: existing?.createdAt ?? session.createdAt ?? now,
           updatedAt: now,
@@ -126,7 +164,24 @@ export function useChatHistory() {
     return newId
   }, [])
 
+  const togglePin = useCallback((id: string) => {
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s))
+      write(next)
+      return next
+    })
+  }, [])
+
+  const setTags = useCallback((id: string, tags: string[]) => {
+    const normalized = normalizeTags(tags)
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, tags: normalized } : s))
+      write(next)
+      return next
+    })
+  }, [])
+
   const get = useCallback((id: string) => sessions.find((s) => s.id === id), [sessions])
 
-  return { sessions, upsert, remove, rename, duplicate, clearAll, get }
+  return { sessions, upsert, remove, rename, duplicate, clearAll, togglePin, setTags, get }
 }

@@ -1,6 +1,6 @@
 "use client"
-import { useRef, useEffect, useState, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, Square } from "lucide-react"
+import { useRef, useEffect, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,15 +17,32 @@ interface ComposerProps {
   disabled?: boolean
   placeholder?: string
   tokenStats?: { input: number; output: number; cost: string | null }
+  files?: File[]
+  onFilesChange?: (files: File[]) => void
 }
 
-export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats }: ComposerProps) {
+const MAX_FILES = 4
+const ACCEPTED_FILE_TYPES = "image/*,application/pdf,text/*"
+
+function fileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
+function isAcceptedFile(file: File) {
+  return file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/")
+}
+
+export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, files = [], onFilesChange }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const slash = matchSlash(value)
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
+  const canSubmit = (!!value.trim() || files.length > 0) && !disabled
 
   // Auto-grow
   useEffect(() => {
@@ -39,6 +56,19 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     if (!showSlash) return
     if (slashIndex >= slashMatches.length) setSlashIndex(0)
   }, [showSlash, slashMatches.length, slashIndex])
+
+  useEffect(() => {
+    const urls: Record<string, string> = {}
+    for (const file of files) {
+      if (file.type.startsWith("image/")) {
+        urls[fileKey(file)] = URL.createObjectURL(file)
+      }
+    }
+    setPreviewUrls(urls)
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [files])
 
   function selectSlashCommand(cmd: SlashCommand) {
     const next = cmd.template("")
@@ -56,6 +86,40 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     const nextSlash = matchSlash(next)
     setSlashOpen(!!nextSlash && nextSlash.matches.length > 0)
     setSlashIndex(0)
+  }
+
+  function addFiles(nextFiles: File[]) {
+    if (!onFilesChange) return
+    const accepted = nextFiles.filter(isAcceptedFile)
+    if (accepted.length === 0) return
+    onFilesChange([...files, ...accepted].slice(0, MAX_FILES))
+  }
+
+  function removeFile(index: number) {
+    onFilesChange?.(files.filter((_, i) => i !== index))
+  }
+
+  function handleFileInput(e: ChangeEvent<HTMLInputElement>) {
+    addFiles(Array.from(e.target.files ?? []))
+    e.target.value = ""
+  }
+
+  function handleDragOver(e: DragEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!disabled) setIsDragging(true)
+  }
+
+  function handleDragLeave(e: DragEvent<HTMLFormElement>) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsDragging(false)
+    }
+  }
+
+  function handleDrop(e: DragEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setIsDragging(false)
+    if (disabled) return
+    addFiles(Array.from(e.dataTransfer.files ?? []))
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -84,14 +148,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
 
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      if (value.trim() && !isStreaming) {
-        onSubmit(e as any)
+      if (canSubmit && !isStreaming) {
+        onSubmit(e as unknown as FormEvent)
       }
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="relative">
+    <form onSubmit={onSubmit} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className="relative">
       {showSlash && (
         <div className="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
           {slashMatches.map((cmd, index) => (
@@ -119,58 +183,117 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
       )}
       <div
         className={cn(
-          "group relative flex items-end gap-2 rounded-3xl border border-border/80 bg-card/80 p-2 pl-4 shadow-lg backdrop-blur-md transition-all",
-          "focus-within:border-foreground/30 focus-within:shadow-xl"
+          "group relative rounded-3xl border border-border/80 bg-card/80 p-2 pl-4 shadow-lg backdrop-blur-md transition-all",
+          "focus-within:border-foreground/30 focus-within:shadow-xl",
+          isDragging && "border-violet-400 bg-violet-500/10"
         )}
       >
-        <Textarea
-          ref={ref}
-          value={value}
-          onChange={(e) => handleChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder || "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)"}
-          disabled={disabled}
-          rows={1}
-          className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
-          autoFocus
-        />
+        {isDragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl border-2 border-dashed border-violet-400 bg-background/70 text-sm font-medium text-violet-500 backdrop-blur-sm">
+            Thả file vào đây (tối đa {MAX_FILES})
+          </div>
+        )}
 
-        <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
-          <Badge variant="outline" className="text-[10px] font-mono">
-            {countTokens(value)} tokens
-          </Badge>
-          {tokenStats && (
+        {files.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2 pr-2">
+            {files.map((file, index) => {
+              const key = fileKey(file)
+              const isImage = file.type.startsWith("image/")
+              return (
+                <div key={key} className="flex max-w-[220px] items-center gap-2 rounded-xl border bg-background/80 px-2 py-1 text-xs shadow-sm">
+                  {isImage ? (
+                    <img src={previewUrls[key]} alt={file.name} className="h-9 w-9 rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                  )}
+                  <span className="truncate" title={file.name}>{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label={`Xóa ${file.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2">
+          <Textarea
+            ref={ref}
+            value={value}
+            onChange={(e) => handleChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder || "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)"}
+            disabled={disabled}
+            rows={1}
+            className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
+            autoFocus
+          />
+
+          <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
             <Badge variant="outline" className="text-[10px] font-mono">
-              ↑ {tokenStats.input} ↓ {tokenStats.output} · {tokenStats.cost ?? "—"}
+              {countTokens(value)} tokens
             </Badge>
-          )}
-        </div>
+            {tokenStats && (
+              <Badge variant="outline" className="text-[10px] font-mono">
+                ↑ {tokenStats.input} ↓ {tokenStats.output} · {tokenStats.cost ?? "—"}
+              </Badge>
+            )}
+          </div>
 
-        {isStreaming ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_FILE_TYPES}
+            multiple
+            onChange={handleFileInput}
+            className="hidden"
+          />
+
           <Button
             type="button"
-            onClick={onStop}
             size="icon"
-            variant="default"
-            className="h-9 w-9 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90"
+            variant="ghost"
+            disabled={disabled || files.length >= MAX_FILES}
+            onClick={() => fileInputRef.current?.click()}
+            className="h-9 w-9 shrink-0 rounded-full"
+            title="Đính kèm file"
           >
-            <Square className="h-3.5 w-3.5 fill-current" />
+            <Paperclip className="h-4 w-4" />
           </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!value.trim() || disabled}
-            className={cn(
-              "send-glow h-9 w-9 shrink-0 rounded-full",
-              value.trim()
-                ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white hover:from-violet-400 hover:to-fuchsia-400"
-                : "bg-muted text-muted-foreground"
-            )}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-        )}
+
+          {isStreaming ? (
+            <Button
+              type="button"
+              onClick={onStop}
+              size="icon"
+              variant="default"
+              className="h-9 w-9 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!canSubmit}
+              className={cn(
+                "send-glow h-9 w-9 shrink-0 rounded-full",
+                canSubmit
+                  ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white hover:from-violet-400 hover:to-fuchsia-400"
+                  : "bg-muted text-muted-foreground"
+              )}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   )

@@ -1,7 +1,7 @@
 "use client"
 
 import { useChat } from "ai/react"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from "react"
 import { countTokens, estimateCost, formatCost } from "@/lib/tokens"
 import { Header } from "@/components/header"
 import { Sidebar } from "@/components/sidebar"
@@ -9,9 +9,14 @@ import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
+import { MemoryDialog } from "@/components/memory-dialog"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import type { PersonaId } from "@/lib/personas"
+import { buildSystemPrompt } from "@/lib/system-prompt"
 import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
 import { useHotkeys } from "@/hooks/use-hotkeys"
+import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
+import { useMemory } from "@/hooks/use-memory"
 
 function newId() {
   return (
@@ -20,20 +25,34 @@ function newId() {
   )
 }
 
+type PendingMessage = {
+  content: string
+  attachments?: any[]
+}
+
 export function Chat() {
   const [provider, setProvider] = useState<ProviderKey>("groq")
   const [model, setModel] = useState<string>(PROVIDERS.groq.default)
+  const [persona, setPersona] = useState<PersonaId>("default")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null)
   const [sessionId, setSessionId] = useState<string>(() => newId())
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
+
+  const { memory, setAbout, addFact, removeFact, clearAll } = useMemory()
+  const personaSystemPrompt = useMemo(
+    () => buildSystemPrompt({ persona, memory }),
+    [persona, memory]
+  )
 
   const {
     messages,
     input,
     handleInputChange,
-    handleSubmit,
     isLoading,
     setMessages,
     setInput,
@@ -43,10 +62,15 @@ export function Chat() {
     append,
   } = useChat({
     api: "/api/chat",
-    body: { provider, model },
+    body: { provider, model, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
   })
 
   const history = useChatHistory()
+  const displayMessages = useMemo(
+    () => messages.map((message, index) => ({ message, index })).filter(({ message }) => message.role !== "system"),
+    [messages]
+  )
+  const hasVisibleMessages = displayMessages.length > 0
 
   // Persist current conversation whenever it changes (debounced 600ms).
   // We persist mid-stream too so a refresh doesn't lose in-flight assistant text;
@@ -64,11 +88,12 @@ export function Chat() {
         messages,
         provider,
         model,
-      })
+        persona,
+      } as any)
     }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, sessionId, provider, model])
+  }, [messages, sessionId, provider, model, persona])
 
   // Auto-scroll
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
@@ -76,6 +101,19 @@ export function Chat() {
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [messages.length, streamingLen])
+
+  useEffect(() => {
+    if (!pendingFirstMessage) return
+    if (!messages.some((message) => message.role === "system")) return
+
+    const pending = pendingFirstMessage
+    setPendingFirstMessage(null)
+    void append({
+      role: "user",
+      content: pending.content,
+      experimental_attachments: pending.attachments,
+    } as any)
+  }, [append, messages, pendingFirstMessage])
 
   // Token + cost estimate
   const tokenStats = useMemo(() => {
@@ -99,6 +137,8 @@ export function Chat() {
     skipNextPersistRef.current = true
     setMessages([])
     setInput("")
+    setAttachedFiles([])
+    setPendingFirstMessage(null)
     setSessionId(newId())
   }, [setMessages, setInput])
 
@@ -122,10 +162,12 @@ export function Chat() {
       const s = history.get(id)
       if (!s) return
       skipNextPersistRef.current = true
+      setAttachedFiles([])
       setSessionId(s.id)
       setMessages(s.messages as any)
       setProvider(s.provider as ProviderKey)
       setModel(s.model)
+      setPersona(((s as any).persona as PersonaId) ?? "default")
     },
     [history, setMessages]
   )
@@ -136,6 +178,8 @@ export function Chat() {
       if (id === sessionId) {
         skipNextPersistRef.current = true
         setMessages([])
+        setAttachedFiles([])
+        setPendingFirstMessage(null)
         setSessionId(newId())
       }
     },
@@ -146,8 +190,56 @@ export function Chat() {
     history.clearAll()
     skipNextPersistRef.current = true
     setMessages([])
+    setAttachedFiles([])
+    setPendingFirstMessage(null)
     setSessionId(newId())
   }, [history, setMessages])
+
+  const handleComposerSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault()
+      if (isLoading) return
+
+      const textBlocks: string[] = []
+      const attachments: any[] = []
+
+      for (const file of attachedFiles) {
+        if (isImageFile(file)) {
+          attachments.push(await fileToAttachment(file))
+          continue
+        }
+
+        const text = await extractFileText(file)
+        if (text.trim()) {
+          textBlocks.push(`[Nội dung file ${file.name}]:\n${text.trim()}`)
+        }
+      }
+
+      const content = [textBlocks.join("\n\n"), input.trim()].filter(Boolean).join("\n\n")
+      if (!content && attachments.length === 0) return
+
+      const userMessage: PendingMessage = {
+        content: content || "Hãy phân tích các tệp đính kèm.",
+        attachments: attachments.length > 0 ? attachments : undefined,
+      }
+
+      setInput("")
+      setAttachedFiles([])
+
+      if (!hasVisibleMessages) {
+        setMessages([{ id: newId(), role: "system", content: personaSystemPrompt } as any])
+        setPendingFirstMessage(userMessage)
+        return
+      }
+
+      await append({
+        role: "user",
+        content: userMessage.content,
+        experimental_attachments: userMessage.attachments,
+      } as any)
+    },
+    [append, attachedFiles, hasVisibleMessages, input, isLoading, personaSystemPrompt, setInput, setMessages]
+  )
 
   return (
     <div className="relative flex h-[100dvh] flex-col bg-background">
@@ -173,19 +265,22 @@ export function Chat() {
       <Header
         provider={provider}
         model={model}
+        persona={persona}
         onChange={handleProviderChange}
+        onPersonaChange={setPersona}
         onNewChat={handleNewChat}
-        canNewChat={messages.length > 0 && !isLoading}
+        canNewChat={hasVisibleMessages && !isLoading}
         onOpenMenu={() => setSidebarOpen(true)}
+        onOpenMemory={() => setMemoryOpen(true)}
       />
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4">
-          {messages.length === 0 ? (
+          {!hasVisibleMessages ? (
             <EmptyState onPick={(t) => setInput(t)} />
           ) : (
             <div className="space-y-8 py-8">
-              {messages.map((m, i) => {
+              {displayMessages.map(({ message: m, index: i }) => {
                 const isLastAssistant =
                   m.role === "assistant" && i === messages.length - 1 && !isLoading
                 return (
@@ -256,10 +351,12 @@ export function Chat() {
           <Composer
             value={input}
             onChange={(v) => handleInputChange({ target: { value: v } } as any)}
-            onSubmit={handleSubmit}
+            onSubmit={handleComposerSubmit}
             onStop={stop}
             isStreaming={isLoading}
             tokenStats={tokenStats}
+            files={attachedFiles}
+            onFilesChange={setAttachedFiles}
           />
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             AI có thể tạo thông tin không chính xác · Powered by{" "}
@@ -269,6 +366,15 @@ export function Chat() {
       </div>
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <MemoryDialog
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        memory={memory}
+        setAbout={setAbout}
+        addFact={addFact}
+        removeFact={removeFact}
+        clearAll={clearAll}
+      />
     </div>
   )
 }
