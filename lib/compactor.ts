@@ -9,8 +9,6 @@ export type CompactableMessage = {
 const CONTEXT_LIMITS: Record<string, number> = {
   "gpt-4o": 128_000,
   "gemini-2.5-flash": 1_000_000,
-  "gemma-3-27b-it": 128_000,
-  "gemma-3-12b-it": 128_000,
   "llama-3.1-8b-instant": 131_000,
   default: 128_000,
 }

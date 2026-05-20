@@ -2,20 +2,15 @@ export const PROVIDERS = {
   google: {
     label: "Google Gemini",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    // Free-tier models. Quotas vary: Gemma-3 has *Unlimited TPM* (15 RPM, 1.5K RPD)
-    // → ideal cho high-volume tasks. Flash-lite mặc định vì cân bằng tốt nhất.
-    // Gemini 3.x preview IDs nếu có sẽ xuất hiện qua /api/google/models (live discovery).
+    // Static list chỉ chứa các Gemini stable đã verify trên v1beta:generateContent.
+    // Để dùng Gemma / preview model: bấm "↻ Quét live model" trong dropdown — endpoint
+    // /api/google/models sẽ list đúng những gì key của bạn có quyền.
     models: [
       "gemini-2.5-flash-lite",
       "gemini-2.5-flash",
       "gemini-2.5-pro",
       "gemini-2.0-flash",
       "gemini-2.0-flash-lite",
-      // Gemma 3 (open weights, served qua Gemini API). Unlimited TPM trên free tier.
-      "gemma-3-27b-it",
-      "gemma-3-12b-it",
-      "gemma-3-4b-it",
-      "gemma-3n-e4b-it",
     ],
     default: "gemini-2.5-flash-lite",
   },
