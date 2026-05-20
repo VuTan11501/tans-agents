@@ -76,7 +76,10 @@ Built with **shadcn/ui** (New York style, zinc base color):
 
 ## 🐍 Alternative: Python/FastAPI version
 
-Trong `python/` folder có FastAPI + Gradio version, deploy được lên HuggingFace Spaces (cũng free). Xem `python/README.md` (nếu cần) hoặc:
+Trong `python/` folder có FastAPI + Gradio version, đã được deploy lên HuggingFace Spaces:
+
+🔗 **Live demo**: https://tan115-tans-agents.hf.space
+🔗 **HF Space**: https://huggingface.co/spaces/Tan115/tans-agents
 
 ```bash
 cd python
