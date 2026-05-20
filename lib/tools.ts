@@ -329,7 +329,14 @@ export const mermaid = tool({
   execute: async ({ code, title }) => ({ code, title }),
 })
 
-export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid }
+export const runPython = tool({
+  description:
+    "Chạy mã Python trực tiếp trong trình duyệt (Pyodide WASM). Dùng khi user yêu cầu tính toán, phân tích số liệu, vẽ matplotlib, hoặc test snippet Python. Không cần cài đặt.",
+  parameters: z.object({ code: z.string().describe("Python source code to execute") }),
+  execute: async ({ code }) => ({ code }),
+})
+
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython }
 export const TOOL_NAMES = Object.keys(agentTools)
 export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   currentTime: "Thời gian",
@@ -341,4 +348,5 @@ export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   generateImage: "Tạo ảnh",
   chartGen: "Vẽ biểu đồ",
   mermaid: "Vẽ sơ đồ",
+  runPython: "Chạy Python",
 }

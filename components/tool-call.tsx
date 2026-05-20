@@ -2,6 +2,7 @@
 import { useState } from "react"
 import { ChevronRight, Wrench, Check, Loader2, AlertCircle } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { PythonRunner } from "@/components/python-runner"
 import { cn } from "@/lib/utils"
 
 interface ToolCallProps {
@@ -15,6 +16,7 @@ const TOOL_LABELS: Record<string, string> = {
   webSearch: "Tìm kiếm web",
   calculator: "Máy tính",
   currentTime: "Thời gian hiện tại",
+  runPython: "Chạy Python",
 }
 
 export function ToolCall({ name, state, args, result }: ToolCallProps) {
@@ -22,8 +24,17 @@ export function ToolCall({ name, state, args, result }: ToolCallProps) {
   const isStreaming = state === "call" || state === "partial-call"
   const isDone = state === "result"
   const hasError = isDone && result && typeof result === "object" && "error" in result
+  const pythonCode = name === "runPython" && isDone ? getPythonCode(result, args) : ""
 
   const label = TOOL_LABELS[name] ?? name
+
+  if (pythonCode) {
+    return (
+      <div className="w-full basis-full">
+        <PythonRunner code={pythonCode} />
+      </div>
+    )
+  }
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -71,4 +82,20 @@ export function ToolCall({ name, state, args, result }: ToolCallProps) {
       </CollapsibleContent>
     </Collapsible>
   )
+}
+
+function getPythonCode(result: any, args: any): string {
+  const parsedResult = parseMaybeJson(result)
+  if (parsedResult && typeof parsedResult === "object" && typeof parsedResult.code === "string") return parsedResult.code
+  if (args && typeof args === "object" && typeof args.code === "string") return args.code
+  return ""
+}
+
+function parseMaybeJson(value: any): any {
+  if (typeof value !== "string") return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
 }
