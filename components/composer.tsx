@@ -1,9 +1,11 @@
 "use client"
 import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, FileText, Mic, Paperclip, Square, X } from "lucide-react"
+import { ArrowUp, Eye, FileText, Mic, Paperclip, Square, X } from "lucide-react"
+import { MarkdownPreview } from "@/components/markdown-preview"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { countTokens } from "@/lib/tokens"
 import { useSpeechRecognition } from "@/hooks/use-voice"
@@ -31,6 +33,7 @@ interface ComposerProps {
 
 const MAX_FILES = 4
 const ACCEPTED_FILE_TYPES = "image/*,application/pdf,text/*"
+const PREVIEW_STORAGE_KEY = "tans:composer:preview"
 const DEFAULT_CONTEXT_LIMIT = 128_000
 const CONTEXT_LIMITS: Record<string, number> = {
   auto: DEFAULT_CONTEXT_LIMIT,
@@ -74,6 +77,8 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [isNarrow, setIsNarrow] = useState(false)
   const [quotedText, setQuotedText] = useState<string | null>(null)
   const [pendingQuotedSubmit, setPendingQuotedSubmit] = useState<string | null>(null)
+  const [markdownPreviewOpen, setMarkdownPreviewOpen] = useState(false)
+  const [previewValue, setPreviewValue] = useState(value)
   useEffect(() => {
     if (typeof window === "undefined") return
     const mq = window.matchMedia("(max-width: 640px)")
@@ -82,6 +87,21 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     mq.addEventListener("change", update)
     return () => mq.removeEventListener("change", update)
   }, [])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setMarkdownPreviewOpen(window.localStorage.getItem(PREVIEW_STORAGE_KEY) === "true")
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(PREVIEW_STORAGE_KEY, String(markdownPreviewOpen))
+  }, [markdownPreviewOpen])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setPreviewValue(value), 100)
+    return () => window.clearTimeout(timeout)
+  }, [value])
+
   const slash = matchSlash(value)
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
@@ -360,17 +380,20 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
         )}
 
         <div className="flex items-end gap-2">
-          <Textarea
-            ref={ref}
-            value={value}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder || (isNarrow ? "Hỏi gì đó..." : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")}
-            disabled={disabled}
-            rows={1}
-            className="min-h-[28px] flex-1 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
-            autoFocus
-          />
+          <div className={cn("min-w-0 flex-1", markdownPreviewOpen && "grid grid-cols-1 gap-2 md:grid-cols-2")}>
+            <Textarea
+              ref={ref}
+              value={value}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder || (isNarrow ? "Hỏi gì đó..." : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")}
+              disabled={disabled}
+              rows={1}
+              className="min-h-[28px] max-h-60 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
+              autoFocus
+            />
+            {markdownPreviewOpen && <MarkdownPreview value={previewValue} className="max-h-60" />}
+          </div>
 
           <div className="absolute bottom-1 left-4 flex gap-1" title="Số token ước tính (cl100k)">
             <Badge variant="outline" className="text-[10px] font-mono">
@@ -391,6 +414,26 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             onChange={handleFileInput}
             className="hidden"
           />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                disabled={disabled}
+                onClick={() => setMarkdownPreviewOpen((open) => !open)}
+                aria-pressed={markdownPreviewOpen}
+                className={cn(
+                  "h-9 w-9 shrink-0 rounded-full",
+                  markdownPreviewOpen && "bg-muted text-primary hover:bg-muted/80 hover:text-primary"
+                )}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Xem trước Markdown</TooltipContent>
+          </Tooltip>
 
           {voiceSupported && (
             <Button
