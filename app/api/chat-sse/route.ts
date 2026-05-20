@@ -5,6 +5,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
+import { compactMessagesIfNeeded } from "@/lib/compactor"
 
 export const runtime = "edge"
 export const maxDuration = 30
@@ -18,6 +19,13 @@ function providerForModel(modelId: string): ProviderKey | undefined {
   return (Object.entries(PROVIDERS) as Array<[ProviderKey, (typeof PROVIDERS)[ProviderKey]]>).find(([, config]) =>
     (config.models as readonly string[]).includes(modelId)
   )?.[0]
+}
+
+function hasApiKey(provider: ProviderKey) {
+  if (provider === "google") return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+  if (provider === "groq") return Boolean(process.env.GROQ_API_KEY)
+  if (provider === "github") return Boolean(process.env.GITHUB_TOKEN)
+  return false
 }
 
 function getModel(provider: ProviderKey, modelId: string) {
@@ -39,6 +47,12 @@ function getModel(provider: ProviderKey, modelId: string) {
   throw new Error(`Unknown provider: ${provider}`)
 }
 
+function getCompactionModel() {
+  if (hasApiKey("groq")) return getModel("groq", "llama-3.1-8b-instant")
+  if (hasApiKey("google")) return getModel("google", "gemini-2.5-flash-lite")
+  return undefined
+}
+
 // OpenAI-compatible SSE wrapper. Each delta is emitted as
 //   data: {"choices":[{"delta":{"content":"..."},"finish_reason":null}]}\n\n
 // followed by a final
@@ -54,6 +68,11 @@ export async function POST(req: Request) {
     const requestedProvider = (provider || "google") as ProviderKey
     const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
     const m = autoRoute?.modelId || model || PROVIDERS[p].default
+    const autoCompact = req.headers.get("X-Auto-Compact") === "1"
+    const compacted = autoCompact
+      ? await compactMessagesIfNeeded({ messages, modelId: m, compactModel: getCompactionModel() })
+      : undefined
+    const finalMessages = compacted?.messages ?? messages
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(
           Object.entries(agentTools).filter(([name]) => enabledTools.includes(name))
@@ -66,7 +85,7 @@ export async function POST(req: Request) {
         typeof personaSystemPrompt === "string" && personaSystemPrompt.length > 0
           ? personaSystemPrompt
           : DEFAULT_SYSTEM_PROMPT,
-      messages,
+      messages: finalMessages,
       tools,
       maxSteps: 5,
       onError({ error }) {
@@ -167,6 +186,7 @@ export async function POST(req: Request) {
               "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
             }
           : {}),
+        ...(compacted?.compacted ? { "X-Auto-Compacted": "1" } : {}),
       },
     })
   } catch (e: any) {

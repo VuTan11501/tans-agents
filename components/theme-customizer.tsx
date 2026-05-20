@@ -18,15 +18,45 @@ const DENSITY_OPTIONS: Array<{ value: Density; label: string }> = [
   { value: "comfortable", label: "Comfortable" },
 ]
 
+const AUTO_COMPACT_KEY = "tans:auto-compact"
+
+function readToggle(key: string) {
+  if (typeof window === "undefined") return false
+  return window.localStorage.getItem(key) === "true"
+}
+
+function installAiFeatureHeaders() {
+  if (typeof window === "undefined") return
+  const w = window as typeof window & { __tansAiFeatureFetchPatched?: boolean }
+  if (w.__tansAiFeatureFetchPatched) return
+
+  const originalFetch = window.fetch.bind(window)
+  w.__tansAiFeatureFetchPatched = true
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url
+    const pathname = new URL(url, window.location.href).pathname
+    if (pathname === "/api/chat" || pathname === "/api/chat-sse") {
+      const headers = new Headers(input instanceof Request ? input.headers : undefined)
+      new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
+      if (readToggle(AUTO_COMPACT_KEY)) headers.set("X-Auto-Compact", "1")
+      return originalFetch(input, { ...init, headers })
+    }
+    return originalFetch(input, init)
+  }
+}
+
 export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [custom, setCustom] = useState("262 83% 58%")
   const [density, setDensity] = useState<Density>("cozy")
+  const [autoCompact, setAutoCompact] = useState(false)
   const isValid = /^\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s*$/.test(custom)
 
   useEffect(() => {
+    installAiFeatureHeaders()
     applyStoredDensity()
     setDensity(getStoredDensity())
+    setAutoCompact(readToggle(AUTO_COMPACT_KEY))
   }, [])
 
   useEffect(() => {
@@ -34,6 +64,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
     const stored = getStoredAccent()
     setSelected(stored)
     setDensity(getStoredDensity())
+    setAutoCompact(readToggle(AUTO_COMPACT_KEY))
     if (stored) setCustom(stored)
   }, [open])
 
@@ -53,6 +84,11 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   function reset() {
     clearAccent()
     setSelected(null)
+  }
+
+  function setPersistentToggle(key: string, value: boolean, setter: (next: boolean) => void) {
+    window.localStorage.setItem(key, String(value))
+    setter(value)
   }
 
   return (
@@ -111,6 +147,22 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
             )
           })}
         </div>
+      </div>
+
+      <div className="mt-5 space-y-2">
+        <div>
+          <div className="text-xs font-medium">Tính năng AI</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Bật/tắt các tối ưu server-side.</p>
+        </div>
+        <label className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+          <span>Tự nén context khi đầy</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={autoCompact}
+            onChange={(event) => setPersistentToggle(AUTO_COMPACT_KEY, event.target.checked, setAutoCompact)}
+          />
+        </label>
       </div>
 
       <label className="mt-4 block space-y-2">

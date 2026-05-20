@@ -5,6 +5,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
+import { compactMessagesIfNeeded } from "@/lib/compactor"
 import type { UserKeys } from "@/lib/user-keys"
 
 export const runtime = "edge"
@@ -28,6 +29,14 @@ function providerForModel(modelId: string): ProviderKey | undefined {
   )?.[0]
 }
 
+function hasApiKey(provider: ProviderKey, userKeys?: UserKeys) {
+  if (getUserApiKey(provider, userKeys)) return true
+  if (provider === "google") return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+  if (provider === "groq") return Boolean(process.env.GROQ_API_KEY)
+  if (provider === "github") return Boolean(process.env.GITHUB_TOKEN)
+  return false
+}
+
 function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
   const userApiKey = getUserApiKey(provider, userKeys)
 
@@ -49,6 +58,12 @@ function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
   throw new Error(`Unknown provider: ${provider}`)
 }
 
+function getCompactionModel(userKeys?: UserKeys) {
+  if (hasApiKey("groq", userKeys)) return getModel("groq", "llama-3.1-8b-instant", userKeys)
+  if (hasApiKey("google", userKeys)) return getModel("google", "gemini-2.5-flash-lite", userKeys)
+  return undefined
+}
+
 export async function POST(req: Request) {
   try {
     const { messages, provider, model, enabledTools, userKeys, auto } = await req.json()
@@ -56,13 +71,18 @@ export async function POST(req: Request) {
     const requestedProvider = (provider || "google") as ProviderKey
     const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
     const m = autoRoute?.modelId || model || PROVIDERS[p].default
+    const autoCompact = req.headers.get("X-Auto-Compact") === "1"
+    const compacted = autoCompact
+      ? await compactMessagesIfNeeded({ messages, modelId: m, compactModel: getCompactionModel(userKeys) })
+      : undefined
+    const finalMessages = compacted?.messages ?? messages
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
       : agentTools
     const result = streamText({
       model: getModel(p, m, userKeys),
       system: SYSTEM_PROMPT,
-      messages,
+      messages: finalMessages,
       tools,
       maxSteps: 5,
       onError({ error }) {
@@ -74,12 +94,15 @@ export async function POST(req: Request) {
       },
     })
     return result.toDataStreamResponse({
-      headers: autoRoute
-        ? {
-            "X-Auto-Model": autoRoute.modelId,
-            "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
-          }
-        : undefined,
+      headers: {
+        ...(autoRoute
+          ? {
+              "X-Auto-Model": autoRoute.modelId,
+              "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
+            }
+          : {}),
+        ...(compacted?.compacted ? { "X-Auto-Compacted": "1" } : {}),
+      },
       sendUsage: true,
       sendReasoning: false,
       // Forward the real error message into the data stream so the client UI
