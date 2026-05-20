@@ -140,66 +140,134 @@ function weatherDescription(code: number): string {
 }
 
 export const webSearch = tool({
-  description: "Search current web results. Uses Brave when configured, otherwise DuckDuckGo.",
+  description: "Search current web results. Uses Brave when configured, otherwise DuckDuckGo (HTML + Lite fallback).",
   parameters: z.object({ query: z.string().describe("Search query") }),
   execute: async ({ query }) => {
     try {
       const braveKey = process.env.BRAVE_SEARCH_API_KEY
       if (braveKey) {
-        const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`
-        const r = await fetch(url, {
-          headers: {
-            Accept: "application/json",
-            "X-Subscription-Token": braveKey,
-          },
-        })
-        if (!r.ok) throw new Error(`Brave search failed: ${r.status}`)
-        const data = await r.json()
-        const results: SearchResult[] = (data.web?.results ?? []).slice(0, 5).map((item: any) => ({
-          title: item.title ?? "",
-          url: item.url ?? "",
-          snippet: item.description ?? "",
-        }))
-        return { source: "brave", results }
+        try {
+          const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`
+          const r = await fetch(url, {
+            headers: { Accept: "application/json", "X-Subscription-Token": braveKey },
+          })
+          if (r.ok) {
+            const data = await r.json()
+            const results: SearchResult[] = (data.web?.results ?? []).slice(0, 5).map((item: any) => ({
+              title: item.title ?? "",
+              url: item.url ?? "",
+              snippet: item.description ?? "",
+            }))
+            if (results.length > 0) return { source: "brave", results }
+          }
+        } catch {}
       }
 
-      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-      const r = await fetch(url, {
-        method: "POST",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "text/html",
-        },
-        body: `q=${encodeURIComponent(query)}`,
-      })
-      if (!r.ok) throw new Error(`DuckDuckGo search failed: ${r.status}`)
-      const html = await r.text()
-      const results: SearchResult[] = []
-      const blockRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
-      let m: RegExpExecArray | null
-      while ((m = blockRe.exec(html)) && results.length < 5) {
-        const rawUrl = m[1]
-        const title = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
-        const snippet = m[3].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
-        let finalUrl = rawUrl
-        try {
-          const u = new URL(rawUrl.startsWith("//") ? `https:${rawUrl}` : rawUrl)
-          const uddg = u.searchParams.get("uddg")
-          if (uddg) finalUrl = decodeURIComponent(uddg)
-        } catch {}
-        results.push({ title, url: finalUrl, snippet })
-      }
-      if (results.length === 0) {
-        return { source: "ddg", results: [], note: "Không tìm thấy kết quả." }
-      }
-      return { source: "ddg", results }
+      const ddgHtml = await tryDdgHtml(query)
+      if (ddgHtml.length > 0) return { source: "ddg-html", results: ddgHtml }
+
+      const ddgLite = await tryDdgLite(query)
+      if (ddgLite.length > 0) return { source: "ddg-lite", results: ddgLite }
+
+      const wiki = await tryWikipediaSearch(query)
+      if (wiki.length > 0) return { source: "wikipedia-fallback", results: wiki, note: "DuckDuckGo bị chặn, dùng Wikipedia." }
+
+      return { source: "ddg", results: [], note: "Không tìm thấy kết quả (search provider có thể đang bị rate-limit)." }
     } catch (e: unknown) {
       return { error: errorMessage(e, "search failed") }
     }
   },
 })
+
+async function tryDdgHtml(query: string): Promise<SearchResult[]> {
+  try {
+    const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      method: "POST",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html",
+      },
+      body: `q=${encodeURIComponent(query)}`,
+    })
+    if (!r.ok) return []
+    const html = await r.text()
+    const results: SearchResult[] = []
+    const blockRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+    let m: RegExpExecArray | null
+    while ((m = blockRe.exec(html)) && results.length < 5) {
+      const rawUrl = m[1]
+      const title = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+      const snippet = m[3].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+      let finalUrl = rawUrl
+      try {
+        const u = new URL(rawUrl.startsWith("//") ? `https:${rawUrl}` : rawUrl)
+        const uddg = u.searchParams.get("uddg")
+        if (uddg) finalUrl = decodeURIComponent(uddg)
+      } catch {}
+      if (finalUrl.includes("duckduckgo.com/y.js")) continue
+      results.push({ title, url: finalUrl, snippet })
+    }
+    return results
+  } catch {
+    return []
+  }
+}
+
+async function tryDdgLite(query: string): Promise<SearchResult[]> {
+  try {
+    const r = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        Accept: "text/html",
+      },
+    })
+    if (!r.ok) return []
+    const html = await r.text()
+    const results: SearchResult[] = []
+    const linkRe = /<a[^>]+class="result-link"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
+    const snippetRe = /<td[^>]+class="result-snippet"[^>]*>([\s\S]*?)<\/td>/g
+    const links: Array<{ url: string; title: string }> = []
+    let m: RegExpExecArray | null
+    while ((m = linkRe.exec(html))) {
+      links.push({
+        url: m[1].startsWith("//") ? `https:${m[1]}` : m[1],
+        title: m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(),
+      })
+    }
+    const snippets: string[] = []
+    while ((m = snippetRe.exec(html))) {
+      snippets.push(m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim())
+    }
+    for (let i = 0; i < links.length && results.length < 5; i++) {
+      if (links[i].url.includes("duckduckgo.com/y.js")) continue
+      results.push({ title: links[i].title, url: links[i].url, snippet: snippets[i] ?? "" })
+    }
+    return results
+  } catch {
+    return []
+  }
+}
+
+async function tryWikipediaSearch(query: string): Promise<SearchResult[]> {
+  try {
+    const r = await fetch(
+      `https://vi.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5&origin=*`
+    )
+    if (!r.ok) return []
+    const data = await r.json()
+    const items = data?.query?.search ?? []
+    return items.slice(0, 5).map((it: any) => ({
+      title: it.title,
+      url: `https://vi.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/ /g, "_"))}`,
+      snippet: String(it.snippet ?? "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(),
+    }))
+  } catch {
+    return []
+  }
+}
 
 export const weather = tool({
   description: "Get current weather for a city or place using Open-Meteo. Use for weather questions.",
