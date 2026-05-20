@@ -1,7 +1,7 @@
 "use client"
 
 import { useChat } from "ai/react"
-import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent, type PointerEvent } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react"
 import { countTokens, estimateCost, formatCost } from "@/lib/tokens"
 import { Header } from "@/components/header"
 import { Sidebar } from "@/components/sidebar"
@@ -11,6 +11,7 @@ import { Composer } from "@/components/composer"
 import { ReadingMode } from "@/components/reading-mode"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
 import { ChatSearch } from "@/components/chat-search"
+import { BulkActions } from "@/components/bulk-actions"
 import { MemoryDialog } from "@/components/memory-dialog"
 import { PromptLibraryDialog } from "@/components/prompt-library-dialog"
 import { ErrorLogDialog } from "@/components/error-log-dialog"
@@ -32,6 +33,10 @@ function newId() {
   )
 }
 
+function messageDomId(message: any, index: number) {
+  return String(message.id ?? index)
+}
+
 type PendingMessage = {
   content: string
   attachments?: any[]
@@ -50,6 +55,8 @@ export function Chat() {
   const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null)
   const [sessionId, setSessionId] = useState<string>(() => newId())
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const chatRootRef = useRef<HTMLDivElement>(null)
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
@@ -120,6 +127,34 @@ export function Chat() {
     [displayMessages]
   )
   const hasVisibleMessages = displayMessages.length > 0
+  const selectedMessages = useMemo(
+    () => displayMessages.filter(({ message, index }) => selectedIds.has(messageDomId(message, index))),
+    [displayMessages, selectedIds]
+  )
+
+  useEffect(() => {
+    const selected = selectedIds
+    const nodes = document.querySelectorAll<HTMLElement>("[data-chat-messages] [data-message-id]")
+    nodes.forEach((node) => {
+      const id = node.dataset.messageId
+      if (id && selected.has(id)) node.setAttribute("data-selected", "true")
+      else node.removeAttribute("data-selected")
+    })
+    return () => nodes.forEach((node) => node.removeAttribute("data-selected"))
+  }, [displayMessages, selectedIds])
+
+  useEffect(() => {
+    if (selectionMode) return
+    setSelectedIds(new Set())
+  }, [selectionMode])
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const visible = new Set(displayMessages.map(({ message, index }) => messageDomId(message, index)))
+      const next = new Set([...current].filter((id) => visible.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [displayMessages])
 
   // Persist current conversation whenever it changes (debounced 600ms).
   // We persist mid-stream too so a refresh doesn't lose in-flight assistant text;
@@ -330,16 +365,77 @@ export function Chat() {
     chatRootRef.current?.focus({ preventScroll: true })
   }, [])
 
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }, [])
+
   const handleChatKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Escape" && selectionMode) {
+        event.preventDefault()
+        clearSelection()
+        return
+      }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
         if (!hasVisibleMessages) return
         event.preventDefault()
         setSearchOpen(true)
       }
     },
-    [hasVisibleMessages]
+    [clearSelection, hasVisibleMessages, selectionMode]
   )
+
+  const handleMessagesClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!selectionMode && !(event.metaKey || event.ctrlKey)) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest("input,textarea,button,a,[role='button'],[contenteditable='true']")) return
+    const messageNode = target?.closest<HTMLElement>("[data-message-id]")
+    if (!messageNode || !event.currentTarget.contains(messageNode)) return
+    const id = messageNode.dataset.messageId
+    if (!id) return
+    event.preventDefault()
+    event.stopPropagation()
+    setSelectionMode(true)
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [selectionMode])
+
+  const getSelectedText = useCallback(() => selectedMessages.map(({ message }) => (typeof message.content === "string" ? message.content.trim() : "")).filter(Boolean).join("\n\n---\n\n"), [selectedMessages])
+
+  const handleCopySelected = useCallback(() => {
+    const text = getSelectedText()
+    if (text) void navigator.clipboard?.writeText(text)
+  }, [getSelectedText])
+
+  const handleExportSelected = useCallback(() => {
+    const markdown = selectedMessages.map(({ message }) => {
+      const role = message.role === "assistant" ? "Assistant" : message.role === "user" ? "User" : String(message.role)
+      const content = typeof message.content === "string" ? message.content.trim() : ""
+      return `## ${role}\n\n${content}`
+    }).filter((block) => block.trim()).join("\n\n---\n\n")
+    if (!markdown) return
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `tans-agents-selected-${new Date().toISOString().slice(0, 10)}.md`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }, [selectedMessages])
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const next = messages.filter((message, index) => !selectedIds.has(messageDomId(message, index)))
+    setMessages((next.some((message) => message.role !== "system") ? next : []) as any)
+    clearSelection()
+  }, [clearSelection, messages, selectedIds, setMessages])
 
   const handleComposerSubmit = useCallback(
     async (e: FormEvent) => {
@@ -424,15 +520,29 @@ export function Chat() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4">
+          {hasVisibleMessages && (
+            <div className="sticky top-3 z-20 mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectionMode) clearSelection()
+                  else setSelectionMode(true)
+                }}
+                className="rounded-full border bg-background/90 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur hover:bg-muted"
+              >
+                {selectionMode ? "Hủy" : "Chọn nhiều"}
+              </button>
+            </div>
+          )}
           {!hasVisibleMessages ? (
             <EmptyState onPick={(t) => setInput(t)} />
           ) : (
-            <div className="space-y-8 py-8" data-chat-messages>
+            <div className="space-y-8 py-8" data-chat-messages data-selection-mode={selectionMode ? "true" : undefined} onClick={handleMessagesClick}>
               {displayMessages.map(({ message: m, index: i }) => {
                 const isLastAssistant =
                   m.role === "assistant" && i === messages.length - 1 && !isLoading
                 return (
-                  <div key={m.id} data-message-id={m.id ?? i}>
+                  <div key={m.id} data-message-id={messageDomId(m, i)}>
                     <MessageBubble
                       role={m.role}
                       content={m.content}
@@ -507,6 +617,14 @@ export function Chat() {
       </div>
 
       <ReadingMode />
+      <BulkActions
+        selectedCount={selectedIds.size}
+        selectionMode={selectionMode}
+        onCopy={handleCopySelected}
+        onExportMarkdown={handleExportSelected}
+        onDelete={handleDeleteSelected}
+        onClear={clearSelection}
+      />
       <ChatSearch open={searchOpen} onOpenChange={setSearchOpen} refreshKey={searchRefreshKey} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <MemoryDialog
