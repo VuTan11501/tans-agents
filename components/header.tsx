@@ -73,11 +73,34 @@ export function Header({
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [snippetsOpen, setSnippetsOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
+  const [discoveredGoogleModels, setDiscoveredGoogleModels] = useState<string[] | null>(null)
+  const [discoveringGoogle, setDiscoveringGoogle] = useState(false)
+  const [discoverError, setDiscoverError] = useState<string | null>(null)
   const providerLabel = PROVIDERS[provider].label
   const isAutoModel = model === "auto"
   const hasKeys = hasAnyUserKey(userKeys)
   const currentPersona = getPersona(persona)
   const toggleVoiceMode = () => window.dispatchEvent(new CustomEvent("tans:voice-toggle"))
+
+  async function discoverGoogleModels() {
+    setDiscoveringGoogle(true)
+    setDiscoverError(null)
+    try {
+      const res = await fetch("/api/google/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userKey: userKeys.gemini ?? "" }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
+      const ids = (data.models as Array<{ id: string }>).map((m) => m.id)
+      setDiscoveredGoogleModels(ids)
+    } catch (err) {
+      setDiscoverError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDiscoveringGoogle(false)
+    }
+  }
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/70 backdrop-blur-xl">
@@ -136,13 +159,18 @@ export function Header({
                 {isAutoModel && <Check className="h-3 w-3" />}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {Object.entries(PROVIDERS).map(([pKey, p]) => (
+              {Object.entries(PROVIDERS).map(([pKey, p]) => {
+                const isGoogle = pKey === "google"
+                const modelList: readonly string[] = isGoogle && discoveredGoogleModels && discoveredGoogleModels.length > 0
+                  ? Array.from(new Set([...p.models, ...discoveredGoogleModels]))
+                  : p.models
+                return (
                 <div key={pKey}>
                   <DropdownMenuLabel className="flex items-center justify-between">
                     <span>{p.label}</span>
                     {pKey === provider && <Check className="h-3 w-3" />}
                   </DropdownMenuLabel>
-                  {p.models.map((m) => {
+                  {modelList.map((m) => {
                     const selected = pKey === provider && m === model
                     return (
                       <DropdownMenuItem
@@ -155,9 +183,22 @@ export function Header({
                       </DropdownMenuItem>
                     )
                   })}
+                  {isGoogle && (
+                    <DropdownMenuItem
+                      onSelect={(e) => { e.preventDefault(); discoverGoogleModels() }}
+                      className="text-[11px] text-muted-foreground"
+                      disabled={discoveringGoogle}
+                    >
+                      {discoveringGoogle ? "Đang quét..." : discoveredGoogleModels ? `↻ Quét lại (${discoveredGoogleModels.length} model)` : "↻ Quét live model có sẵn với key của bạn"}
+                    </DropdownMenuItem>
+                  )}
+                  {isGoogle && discoverError && (
+                    <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">{discoverError}</div>
+                  )}
                   <DropdownMenuSeparator />
                 </div>
-              ))}
+                )
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 
