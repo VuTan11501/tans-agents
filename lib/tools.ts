@@ -336,7 +336,23 @@ export const runPython = tool({
   execute: async ({ code }) => ({ code }),
 })
 
-export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython }
+export const searchCollection = tool({
+  description:
+    "Tìm trong tài liệu cá nhân (RAG). Dùng khi user muốn tra cứu PDF/MD/TXT đã upload vào Bộ tài liệu cá nhân.",
+  parameters: z.object({
+    query: z.string().describe("Câu hỏi hoặc từ khoá cần tìm"),
+    collectionId: z.string().describe("ID collection trong IndexedDB"),
+    topK: z.number().int().min(1).max(10).optional().default(5),
+  }),
+  execute: async ({ query, collectionId, topK }) => ({
+    query,
+    collectionId,
+    topK,
+    note: "Bộ tài liệu cá nhân được lưu trong IndexedDB của trình duyệt, nên server chat không thể đọc trực tiếp. Hãy mở Bộ tài liệu trên header để tìm kiếm cục bộ.",
+  }),
+})
+
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython, searchCollection }
 export const TOOL_NAMES = Object.keys(agentTools)
 export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   currentTime: "Thời gian",
@@ -349,4 +365,5 @@ export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   chartGen: "Vẽ biểu đồ",
   mermaid: "Vẽ sơ đồ",
   runPython: "Chạy Python",
+  searchCollection: "Tìm tài liệu",
 }
