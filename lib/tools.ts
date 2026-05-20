@@ -163,22 +163,37 @@ export const webSearch = tool({
         return { source: "brave", results }
       }
 
-      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
-      const r = await fetch(url)
+      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "text/html",
+        },
+        body: `q=${encodeURIComponent(query)}`,
+      })
       if (!r.ok) throw new Error(`DuckDuckGo search failed: ${r.status}`)
-      const data = await r.json()
-      const topicResults: SearchResult[] = (data.RelatedTopics ?? [])
-        .flatMap((topic: any) => (topic.Topics ? topic.Topics : [topic]))
-        .filter((topic: any) => topic.Text)
-        .slice(0, 5)
-        .map((topic: any) => ({
-          title: topic.Text?.split(" - ")[0] ?? topic.Text ?? "",
-          url: topic.FirstURL ?? "",
-          snippet: topic.Text ?? "",
-        }))
-      const results = data.AbstractText
-        ? [{ title: data.Heading ?? query, url: data.AbstractURL ?? "", snippet: data.AbstractText }, ...topicResults].slice(0, 5)
-        : topicResults
+      const html = await r.text()
+      const results: SearchResult[] = []
+      const blockRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+      let m: RegExpExecArray | null
+      while ((m = blockRe.exec(html)) && results.length < 5) {
+        const rawUrl = m[1]
+        const title = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+        const snippet = m[3].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+        let finalUrl = rawUrl
+        try {
+          const u = new URL(rawUrl.startsWith("//") ? `https:${rawUrl}` : rawUrl)
+          const uddg = u.searchParams.get("uddg")
+          if (uddg) finalUrl = decodeURIComponent(uddg)
+        } catch {}
+        results.push({ title, url: finalUrl, snippet })
+      }
+      if (results.length === 0) {
+        return { source: "ddg", results: [], note: "Không tìm thấy kết quả." }
+      }
       return { source: "ddg", results }
     } catch (e: unknown) {
       return { error: errorMessage(e, "search failed") }
@@ -293,3 +308,4 @@ export const generateImage = tool({
 })
 
 export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage }
+export const TOOL_NAMES = Object.keys(agentTools)

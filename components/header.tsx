@@ -1,5 +1,5 @@
 "use client"
-import { Sparkles, ChevronDown, Check, Plus, Menu, Brain } from "lucide-react"
+import { Sparkles, ChevronDown, Check, Plus, Menu, Brain, Library, Bug } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
 import {
@@ -25,6 +25,8 @@ interface HeaderProps {
   canNewChat: boolean
   onOpenMenu: () => void
   onOpenMemory: () => void
+  onOpenPromptLibrary: () => void
+  onOpenErrorLog: () => void
 }
 
 export function Header({
@@ -37,6 +39,8 @@ export function Header({
   canNewChat,
   onOpenMenu,
   onOpenMemory,
+  onOpenPromptLibrary,
+  onOpenErrorLog,
 }: HeaderProps) {
   const providerLabel = PROVIDERS[provider].label
 
@@ -120,6 +124,34 @@ export function Header({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Bộ nhớ</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-full border border-border/60"
+                onClick={onOpenPromptLibrary}
+                aria-label="Mở thư viện prompt"
+              >
+                <Library className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Prompt Library</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-full border border-border/60"
+                onClick={onOpenErrorLog}
+                aria-label="Mở error log"
+              >
+                <Bug className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Error log</TooltipContent>
           </Tooltip>
         </div>
 

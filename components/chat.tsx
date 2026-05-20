@@ -10,6 +10,8 @@ import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
 import { MemoryDialog } from "@/components/memory-dialog"
+import { PromptLibraryDialog } from "@/components/prompt-library-dialog"
+import { ErrorLogDialog } from "@/components/error-log-dialog"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { PersonaId } from "@/lib/personas"
 import { buildSystemPrompt } from "@/lib/system-prompt"
@@ -17,6 +19,8 @@ import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
 import { useHotkeys } from "@/hooks/use-hotkeys"
 import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
 import { useMemory } from "@/hooks/use-memory"
+import { logError } from "@/lib/error-log"
+import type { PromptItem } from "@/hooks/use-prompts"
 
 function newId() {
   return (
@@ -37,17 +41,26 @@ export function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false)
+  const [errorLogOpen, setErrorLogOpen] = useState(false)
   const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null)
   const [sessionId, setSessionId] = useState<string>(() => newId())
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
+  const messagesRef = useRef<any[]>([])
 
   const { memory, setAbout, addFact, removeFact, clearAll } = useMemory()
   const personaSystemPrompt = useMemo(
     () => buildSystemPrompt({ persona, memory }),
     [persona, memory]
   )
+  const history = useChatHistory()
+  const currentSession = useMemo(
+    () => history.sessions.find((session) => session.id === sessionId),
+    [history.sessions, sessionId]
+  )
+  const enabledTools = currentSession?.enabledTools
 
   const {
     messages,
@@ -62,10 +75,33 @@ export function Chat() {
     append,
   } = useChat({
     api: "/api/chat",
-    body: { provider, model, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+    body: { provider, model, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+    onError: (err) => {
+      const lastMessage = [...messagesRef.current]
+        .reverse()
+        .find((message) => message.role === "user")?.content
+
+      logError({
+        time: Date.now(),
+        request: { provider, model, lastMessage: typeof lastMessage === "string" ? lastMessage : undefined },
+        error: err.message,
+      })
+    },
   })
 
-  const history = useChatHistory()
+  useEffect(() => {
+    messagesRef.current = messages as any[]
+  }, [messages])
+
+  useEffect(() => {
+    function handleOpenPrompts() {
+      setPromptLibraryOpen(true)
+    }
+
+    window.addEventListener("tans-agents:open-prompts", handleOpenPrompts)
+    return () => window.removeEventListener("tans-agents:open-prompts", handleOpenPrompts)
+  }, [])
+
   const displayMessages = useMemo(
     () => messages.map((message, index) => ({ message, index })).filter(({ message }) => message.role !== "system"),
     [messages]
@@ -131,6 +167,13 @@ export function Chat() {
   function handleProviderChange(p: ProviderKey, m: string) {
     setProvider(p)
     setModel(m)
+  }
+
+  function handleSelectPrompt(prompt: PromptItem) {
+    setInput((current) => {
+      const trimmed = current.trimEnd()
+      return trimmed ? `${trimmed}\n\n${prompt.body}` : prompt.body
+    })
   }
 
   const handleNewChat = useCallback(() => {
@@ -272,6 +315,8 @@ export function Chat() {
         canNewChat={hasVisibleMessages && !isLoading}
         onOpenMenu={() => setSidebarOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
+        onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
+        onOpenErrorLog={() => setErrorLogOpen(true)}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -375,6 +420,12 @@ export function Chat() {
         removeFact={removeFact}
         clearAll={clearAll}
       />
+      <PromptLibraryDialog
+        open={promptLibraryOpen}
+        onOpenChange={setPromptLibraryOpen}
+        onSelect={handleSelectPrompt}
+      />
+      <ErrorLogDialog open={errorLogOpen} onOpenChange={setErrorLogOpen} />
     </div>
   )
 }

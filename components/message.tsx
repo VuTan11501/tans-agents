@@ -2,11 +2,12 @@
 import { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X, MoreHorizontal } from "lucide-react"
+import { Copy, Check, Sparkles, User, RefreshCw, ThumbsUp, ThumbsDown, Pencil, X, MoreHorizontal, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
 import { useTypewriter } from "@/hooks/use-typewriter"
+import { useSpeechSynthesis } from "@/hooks/use-voice"
 import { cn } from "@/lib/utils"
 
 interface MessageProps {
@@ -45,6 +46,7 @@ export function MessageBubble({
   const displayedContent = useTypewriter(isUser ? "" : content)
   const showCursor = !!isStreaming || (!isUser && displayedContent.length < content.length)
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
+  const voice = useSpeechSynthesis()
 
   // User message: support edit + copy
   const [editing, setEditing] = useState(false)
@@ -158,6 +160,14 @@ export function MessageBubble({
         {content && !showCursor && (
           <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
             <CopyAction text={content} />
+            {voice.supported && (
+              <ActionIcon
+                label={voice.speaking ? "Dừng đọc" : "Đọc câu trả lời"}
+                onClick={() => voice.speaking ? voice.cancel() : voice.speak(content, { lang: "vi-VN", rate: 1 })}
+              >
+                {voice.speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+              </ActionIcon>
+            )}
             {isLastAssistant && onRegenerate && (
               <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
                 <RefreshCw className="h-3.5 w-3.5" />

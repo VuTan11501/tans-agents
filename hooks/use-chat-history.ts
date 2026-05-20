@@ -11,6 +11,7 @@ export interface ChatSession {
   updatedAt: number
   pinned?: boolean
   tags?: string[]
+  enabledTools?: string[]
 }
 
 const STORAGE_KEY = "tans-agents:chat-history-v1"
@@ -70,6 +71,12 @@ export function setSessionTags(id: string, tags: string[]) {
   const normalized = normalizeTags(tags)
   mutateStoredSessions((sessions) =>
     sessions.map((s) => (s.id === id ? { ...s, tags: normalized } : s))
+  )
+}
+
+export function setSessionEnabledTools(id: string, enabledTools?: string[]) {
+  mutateStoredSessions((sessions) =>
+    sessions.map((s) => (s.id === id ? { ...s, enabledTools } : s))
   )
 }
 
@@ -181,7 +188,15 @@ export function useChatHistory() {
     })
   }, [])
 
+  const setEnabledTools = useCallback((id: string, enabledTools?: string[]) => {
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, enabledTools } : s))
+      write(next)
+      return next
+    })
+  }, [])
+
   const get = useCallback((id: string) => sessions.find((s) => s.id === id), [sessions])
 
-  return { sessions, upsert, remove, rename, duplicate, clearAll, togglePin, setTags, get }
+  return { sessions, upsert, remove, rename, duplicate, clearAll, togglePin, setTags, setEnabledTools, get }
 }

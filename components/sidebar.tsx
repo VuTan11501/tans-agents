@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import type { CSSProperties, ReactNode } from "react"
+import * as Dialog from "@radix-ui/react-dialog"
 import {
   MessageSquare,
   Plus,
@@ -17,6 +18,7 @@ import {
   Star,
   StarOff,
   Tags,
+  Wrench,
 } from "lucide-react"
 import {
   Sheet,
@@ -38,7 +40,9 @@ import {
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { downloadBlob, safeFilename, sessionToJSON, sessionToMarkdown } from "@/lib/export"
+import { TOOL_NAMES } from "@/lib/tools"
 import {
+  setSessionEnabledTools,
   setSessionTags,
   togglePinnedSession,
   type ChatSession,
@@ -357,11 +361,30 @@ function SessionItem({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [toolDraft, setToolDraft] = useState<string[]>(() => [...(session.enabledTools ?? TOOL_NAMES)])
 
   function handleSetTags() {
     const input = prompt("Nhập nhãn, phân tách bằng dấu phẩy", (session.tags ?? []).join(", "))
     if (input === null) return
     setSessionTags(session.id, parseTags(input))
+  }
+
+  function openToolsDialog() {
+    setToolDraft([...(session.enabledTools ?? TOOL_NAMES)])
+    setToolsOpen(true)
+  }
+
+  function toggleTool(toolName: string) {
+    setToolDraft((prev) =>
+      prev.includes(toolName) ? prev.filter((name) => name !== toolName) : [...prev, toolName]
+    )
+  }
+
+  function saveTools() {
+    const enabledTools = toolDraft.length === TOOL_NAMES.length ? undefined : toolDraft
+    setSessionEnabledTools(session.id, enabledTools)
+    setToolsOpen(false)
   }
 
   function commit() {
@@ -406,6 +429,7 @@ function SessionItem({
   }
 
   return (
+    <>
     <div
       className={cn(
         "group flex items-center gap-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/60",
@@ -465,6 +489,15 @@ function SessionItem({
           <DropdownMenuItem className="gap-2 text-xs" onClick={handleSetTags}>
             <Tags className="h-3.5 w-3.5" /> Đặt nhãn...
           </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 text-xs"
+            onSelect={(e) => {
+              e.preventDefault()
+              openToolsDialog()
+            }}
+          >
+            <Wrench className="h-3.5 w-3.5" /> 🔧 Công cụ
+          </DropdownMenuItem>
           <DropdownMenuItem className="gap-2 text-xs" onClick={() => setEditing(true)}>
             <Pencil className="h-3.5 w-3.5" /> Đổi tên
           </DropdownMenuItem>
@@ -513,5 +546,52 @@ function SessionItem({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    <Dialog.Root open={toolsOpen} onOpenChange={setToolsOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border bg-background p-5 shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95">
+          <Dialog.Title className="text-base font-semibold">🔧 Công cụ</Dialog.Title>
+          <Dialog.Description className="mt-1 text-xs text-muted-foreground">
+            Chọn các tool được phép dùng trong session này. Mặc định bật tất cả.
+          </Dialog.Description>
+
+          <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+            {TOOL_NAMES.map((toolName) => (
+              <label
+                key={toolName}
+                className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/60"
+              >
+                <input
+                  type="checkbox"
+                  checked={toolDraft.includes(toolName)}
+                  onChange={() => toggleTool(toolName)}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                <span className="font-mono text-xs">{toolName}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setToolDraft([...TOOL_NAMES])}>
+              Bật tất cả
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setToolsOpen(false)}>
+                Hủy
+              </Button>
+              <Button size="sm" onClick={saveTools}>
+                Lưu
+              </Button>
+            </div>
+          </div>
+
+          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+            <XIcon className="h-4 w-4" />
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+    </>
   )
 }

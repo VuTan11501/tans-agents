@@ -1,11 +1,12 @@
 "use client"
 import { useRef, useEffect, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react"
+import { ArrowUp, FileText, Mic, Paperclip, Square, X } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { countTokens } from "@/lib/tokens"
+import { useSpeechRecognition } from "@/hooks/use-voice"
 import { cn } from "@/lib/utils"
 
 interface ComposerProps {
@@ -35,6 +36,8 @@ function isAcceptedFile(file: File) {
 export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, files = [], onFilesChange }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const voiceBaseRef = useRef("")
+  const { supported: voiceSupported, listening: voiceListening, transcript: voiceTranscript, start: startVoice, stop: stopVoice } = useSpeechRecognition({ lang: "vi-VN" })
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -86,6 +89,23 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     const nextSlash = matchSlash(next)
     setSlashOpen(!!nextSlash && nextSlash.matches.length > 0)
     setSlashIndex(0)
+  }
+
+  useEffect(() => {
+    if (!voiceTranscript) return
+    const base = voiceBaseRef.current
+    const separator = base.trim() && !base.endsWith(" ") ? " " : ""
+    handleChange(`${base}${separator}${voiceTranscript}`)
+  }, [voiceTranscript])
+
+  function handleVoiceToggle() {
+    if (voiceListening) {
+      stopVoice()
+      return
+    }
+    voiceBaseRef.current = value
+    startVoice()
+    ref.current?.focus()
   }
 
   function addFiles(nextFiles: File[]) {
@@ -255,6 +275,23 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             onChange={handleFileInput}
             className="hidden"
           />
+
+          {voiceSupported && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              disabled={disabled}
+              onClick={handleVoiceToggle}
+              className={cn(
+                "h-9 w-9 shrink-0 rounded-full",
+                voiceListening && "animate-pulse bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+              )}
+              title={voiceListening ? "Dừng ghi âm" : "Nhập bằng giọng nói"}
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          )}
 
           <Button
             type="button"

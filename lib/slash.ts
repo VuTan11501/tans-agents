@@ -49,6 +49,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Tìm thông tin trên web (dùng tool webSearch)",
     template: (rest) => `Hãy dùng tool webSearch rồi tổng hợp: ${rest}`,
   },
+  {
+    id: "prompts",
+    trigger: "/prompts",
+    label: "Prompts",
+    description: "Mở thư viện prompt đã lưu",
+    template: () => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("tans-agents:open-prompts"))
+      }
+      return ""
+    },
+  },
 ]
 
 export function matchSlash(input: string): { matches: SlashCommand[]; query: string } | null {

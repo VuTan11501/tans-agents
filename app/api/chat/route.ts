@@ -34,14 +34,17 @@ function getModel(provider: ProviderKey, modelId: string) {
 
 export async function POST(req: Request) {
   try {
-    const { messages, provider, model } = await req.json()
+    const { messages, provider, model, enabledTools } = await req.json()
     const p = (provider || "google") as ProviderKey
     const m = model || PROVIDERS[p].default
+    const tools = Array.isArray(enabledTools)
+      ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
+      : agentTools
     const result = streamText({
       model: getModel(p, m),
       system: SYSTEM_PROMPT,
       messages,
-      tools: agentTools,
+      tools,
       maxSteps: 5,
       onError({ error }) {
         // surface model/SDK errors to server logs so they're not silently swallowed
