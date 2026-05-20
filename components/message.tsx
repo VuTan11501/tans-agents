@@ -3,6 +3,8 @@ import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, use
 import type { ReactElement, ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
 import { Check, Copy, ExternalLink, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -248,7 +250,8 @@ export function MessageBubble({
         {content ? (
           <div className={cn("prose-chat", showCursor && "prose-chat-streaming")}>
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
               components={{
                 pre: (props: any) => <CodeBlock {...props} />,
                 p: ({ children, ...props }: any) => <p {...props}>{linkCitationMarkers(children, citationSources)}</p>,

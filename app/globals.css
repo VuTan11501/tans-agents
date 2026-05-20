@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import "katex/dist/katex.min.css";
 
 @layer base {
   html {
@@ -147,6 +148,28 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fade-up 0.3s ease-out; }
+
+/* KaTeX math — prevent long block formulas from overflowing chat width on mobile */
+.prose-chat .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 0.25rem 0;
+  margin: 0.75em 0;
+}
+.prose-chat .katex-display > .katex {
+  white-space: nowrap;
+}
+.prose-chat .katex {
+  font-size: 1.05em;
+}
+/* Inline math should never break the line layout awkwardly */
+.prose-chat :not(.katex-display) > .katex {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
 
 /* Chat markdown styling  -  Claude-style readable prose */
 .prose-chat {
