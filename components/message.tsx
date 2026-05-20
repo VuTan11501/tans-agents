@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
 import { MermaidRenderer } from "@/components/mermaid-renderer"
+import { DiffRenderer } from "@/components/diff-renderer"
 import { ChartRenderer, type ChartData } from "@/components/chart-renderer"
 import { useTypewriter } from "@/hooks/use-typewriter"
 import { useSpeechSynthesis } from "@/hooks/use-voice"
@@ -201,7 +202,7 @@ export function MessageBubble({
       <div ref={assistantMessageRef} onMouseUp={handleAssistantMouseUp} className="min-w-0 flex-1 space-y-3 pt-1">
         {quoteButton && (
           <div
-            className="fixed z-50 -translate-x-1/2"
+            className="fixed z-40 -translate-x-1/2"
             style={{ top: quoteButton.top, left: quoteButton.left }}
             onMouseDown={(e) => e.preventDefault()}
           >
@@ -361,6 +362,10 @@ function CodeBlock({ children }: any) {
 
   if (normalizedLanguage === "mermaid") {
     return <MermaidRenderer code={text} />
+  }
+
+  if (normalizedLanguage === "diff") {
+    return <DiffRenderer code={text} />
   }
 
   function copyCode() {

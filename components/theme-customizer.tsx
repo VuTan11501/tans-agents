@@ -18,6 +18,7 @@ const DENSITY_OPTIONS: Array<{ value: Density; label: string }> = [
   { value: "comfortable", label: "Comfortable" },
 ]
 
+const SELF_CRITIQUE_KEY = "tans:self-critique"
 const AUTO_COMPACT_KEY = "tans:auto-compact"
 
 function readToggle(key: string) {
@@ -38,6 +39,7 @@ function installAiFeatureHeaders() {
     if (pathname === "/api/chat" || pathname === "/api/chat-sse") {
       const headers = new Headers(input instanceof Request ? input.headers : undefined)
       new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
+      if (readToggle(SELF_CRITIQUE_KEY)) headers.set("X-Self-Critique", "1")
       if (readToggle(AUTO_COMPACT_KEY)) headers.set("X-Auto-Compact", "1")
       return originalFetch(input, { ...init, headers })
     }
@@ -49,6 +51,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [custom, setCustom] = useState("262 83% 58%")
   const [density, setDensity] = useState<Density>("cozy")
+  const [selfCritique, setSelfCritique] = useState(false)
   const [autoCompact, setAutoCompact] = useState(false)
   const isValid = /^\s*\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s*$/.test(custom)
 
@@ -56,6 +59,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
     installAiFeatureHeaders()
     applyStoredDensity()
     setDensity(getStoredDensity())
+    setSelfCritique(readToggle(SELF_CRITIQUE_KEY))
     setAutoCompact(readToggle(AUTO_COMPACT_KEY))
   }, [])
 
@@ -64,9 +68,19 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
     const stored = getStoredAccent()
     setSelected(stored)
     setDensity(getStoredDensity())
+    setSelfCritique(readToggle(SELF_CRITIQUE_KEY))
     setAutoCompact(readToggle(AUTO_COMPACT_KEY))
     if (stored) setCustom(stored)
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false)
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [open, onOpenChange])
 
   if (!open) return null
 
@@ -92,7 +106,19 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
   }
 
   return (
-    <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl">
+    <>
+      <div
+        className="fixed inset-0 z-[55] bg-transparent"
+        onClick={() => onOpenChange(false)}
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-modal="false"
+        className="fixed right-2 top-16 z-[60] w-[min(20rem,calc(100vw-1rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2 duration-200 ease-out sm:right-4 sm:top-14 sm:w-72"
+        data-state="open"
+        onClick={(event) => event.stopPropagation()}
+      >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Màu nhấn</h3>
@@ -155,6 +181,15 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
           <p className="mt-1 text-[11px] text-muted-foreground">Bật/tắt các tối ưu server-side.</p>
         </div>
         <label className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+          <span>Tự đánh giá câu trả lời</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={selfCritique}
+            onChange={(event) => setPersistentToggle(SELF_CRITIQUE_KEY, event.target.checked, setSelfCritique)}
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
           <span>Tự nén context khi đầy</span>
           <input
             type="checkbox"
@@ -177,6 +212,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
       <button className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:underline" type="button" onClick={() => onOpenChange(false)}>
         Đóng
       </button>
-    </div>
+      </div>
+    </>
   )
 }

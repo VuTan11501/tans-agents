@@ -15,6 +15,8 @@ import { BulkActions } from "@/components/bulk-actions"
 import { MemoryDialog } from "@/components/memory-dialog"
 import { PromptLibraryDialog } from "@/components/prompt-library-dialog"
 import { ErrorLogDialog } from "@/components/error-log-dialog"
+import { AbCompare, type AbPaneState } from "@/components/ab-compare"
+import { AbToggle, type AbModeState } from "@/components/ab-toggle"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { PersonaId } from "@/lib/personas"
 import { buildSystemPrompt } from "@/lib/system-prompt"
@@ -24,6 +26,9 @@ import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
 import { useMemory } from "@/hooks/use-memory"
 import { useUserKeys } from "@/hooks/use-user-keys"
 import { logError } from "@/lib/error-log"
+import { streamAbComparison, type AbStreamHandle } from "@/lib/ab"
+import { getActiveCollectionId, RAG_ACTIVE_COLLECTION_EVENT } from "@/lib/collections"
+import { cn } from "@/lib/utils"
 import type { PromptItem } from "@/hooks/use-prompts"
 
 function newId() {
@@ -42,6 +47,14 @@ type PendingMessage = {
   attachments?: any[]
 }
 
+type ActiveAbCompare = {
+  id: string
+  a: AbPaneState
+  b: AbPaneState
+}
+
+const AB_STORAGE_KEY = "tans:ab"
+
 export function Chat() {
   const [provider, setProvider] = useState<ProviderKey>("groq")
   const [model, setModel] = useState<string>(PROVIDERS.groq.default)
@@ -57,10 +70,28 @@ export function Chat() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [abMode, setAbMode] = useState<AbModeState>(() => {
+    if (typeof window === "undefined") {
+      return { enabled: false, modelA: PROVIDERS.groq.default, modelB: PROVIDERS.google.default }
+    }
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(AB_STORAGE_KEY) || "null")
+      return {
+        enabled: !!saved?.enabled,
+        modelA: typeof saved?.modelA === "string" ? saved.modelA : PROVIDERS.groq.default,
+        modelB: typeof saved?.modelB === "string" ? saved.modelB : PROVIDERS.google.default,
+      }
+    } catch {
+      return { enabled: false, modelA: PROVIDERS.groq.default, modelB: PROVIDERS.google.default }
+    }
+  })
+  const [activeAb, setActiveAb] = useState<ActiveAbCompare | null>(null)
+  const [ragActiveCollectionId, setRagActiveCollectionId] = useState<string | null>(() => getActiveCollectionId())
   const chatRootRef = useRef<HTMLDivElement>(null)
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const skipNextPersistRef = useRef(false)
   const messagesRef = useRef<any[]>([])
+  const abStreamRef = useRef<AbStreamHandle | null>(null)
 
   const { memory, setAbout, addFact, removeFact, clearAll } = useMemory()
   const { keys: userKeys, setKey: setUserKey, clearAll: clearUserKeys } = useUserKeys()
@@ -74,6 +105,8 @@ export function Chat() {
     [history.sessions, sessionId]
   )
   const enabledTools = currentSession?.enabledTools
+  const effectiveAbEnabled = abMode.enabled && !ragActiveCollectionId
+  const isAbLoading = !!activeAb && (!activeAb.a.done || !activeAb.b.done)
 
   const {
     messages,
@@ -108,6 +141,20 @@ export function Chat() {
   useEffect(() => {
     messagesRef.current = messages as any[]
   }, [messages])
+
+  useEffect(() => {
+    window.localStorage.setItem(AB_STORAGE_KEY, JSON.stringify(abMode))
+  }, [abMode])
+
+  useEffect(() => {
+    const syncRag = () => setRagActiveCollectionId(getActiveCollectionId())
+    window.addEventListener(RAG_ACTIVE_COLLECTION_EVENT, syncRag)
+    window.addEventListener("storage", syncRag)
+    return () => {
+      window.removeEventListener(RAG_ACTIVE_COLLECTION_EVENT, syncRag)
+      window.removeEventListener("storage", syncRag)
+    }
+  }, [])
 
   useEffect(() => {
     function handleOpenPrompts() {
@@ -217,10 +264,79 @@ export function Chat() {
     setModel(m)
   }
 
+  const startAbComparison = useCallback(
+    (nextMessages: any[]) => {
+      abStreamRef.current?.abort()
+      const compareId = newId()
+      setActiveAb({
+        id: compareId,
+        a: { model: abMode.modelA, content: "", done: false },
+        b: { model: abMode.modelB, content: "", done: false },
+      })
+
+      const patchAb = (mutator: (current: ActiveAbCompare) => ActiveAbCompare) => {
+        setActiveAb((current) => {
+          if (!current || current.id !== compareId) return current
+          return mutator(current)
+        })
+      }
+      const handleError = (side: "a" | "b", err: Error) => {
+        logError({
+          time: Date.now(),
+          request: { provider, model: side === "a" ? abMode.modelA : abMode.modelB, lastMessage: nextMessages.at(-1)?.content },
+          error: err.message,
+        })
+        patchAb((current) => ({
+          ...current,
+          [side]: { ...current[side], done: true, error: err.message },
+        }))
+      }
+
+      const handle = streamAbComparison({
+        messages: nextMessages,
+        modelA: abMode.modelA,
+        modelB: abMode.modelB,
+        body: { userKeys, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+        callbacks: {
+          onChunkA: (chunk) => patchAb((current) => ({ ...current, a: { ...current.a, content: current.a.content + chunk } })),
+          onChunkB: (chunk) => patchAb((current) => ({ ...current, b: { ...current.b, content: current.b.content + chunk } })),
+          onDoneA: () => patchAb((current) => ({ ...current, a: { ...current.a, done: true } })),
+          onDoneB: () => patchAb((current) => ({ ...current, b: { ...current.b, done: true } })),
+          onErrorA: (err) => handleError("a", err),
+          onErrorB: (err) => handleError("b", err),
+        },
+      })
+      abStreamRef.current = handle
+      void handle.done.finally(() => {
+        if (abStreamRef.current === handle) abStreamRef.current = null
+      })
+    },
+    [abMode.modelA, abMode.modelB, enabledTools, memory.about, memory.facts, model, persona, personaSystemPrompt, provider, userKeys]
+  )
+
   const sendUserMessage = useCallback(
     async (userMessage: PendingMessage) => {
       setInput("")
       setAttachedFiles([])
+
+      if (effectiveAbEnabled) {
+        const baseMessages = hasVisibleMessages
+          ? messages
+          : [{ id: newId(), role: "system", content: personaSystemPrompt } as any]
+        const nextMessages = [
+          ...baseMessages,
+          {
+            id: newId(),
+            role: "user",
+            content: userMessage.content,
+            experimental_attachments: userMessage.attachments,
+          } as any,
+        ]
+        setPendingFirstMessage(null)
+        setMessages(nextMessages as any)
+        startAbComparison(nextMessages)
+        return
+      }
 
       if (!hasVisibleMessages) {
         setMessages([{ id: newId(), role: "system", content: personaSystemPrompt } as any])
@@ -234,12 +350,12 @@ export function Chat() {
         experimental_attachments: userMessage.attachments,
       } as any)
     },
-    [append, hasVisibleMessages, personaSystemPrompt, setInput, setMessages]
+    [append, effectiveAbEnabled, hasVisibleMessages, messages, personaSystemPrompt, setInput, setMessages, startAbComparison]
   )
 
   useEffect(() => {
     function handleVoiceSend(event: Event) {
-      if (isLoading) return
+      if (isLoading || isAbLoading) return
       const text = (event as CustomEvent<{ text?: unknown }>).detail?.text
       if (typeof text !== "string" || !text.trim()) return
       void sendUserMessage({ content: text.trim() })
@@ -247,7 +363,7 @@ export function Chat() {
 
     window.addEventListener("tans:voice-send", handleVoiceSend)
     return () => window.removeEventListener("tans:voice-send", handleVoiceSend)
-  }, [isLoading, sendUserMessage])
+  }, [isAbLoading, isLoading, sendUserMessage])
 
   function handleSelectPrompt(prompt: PromptItem) {
     setInput((current) => {
@@ -257,6 +373,9 @@ export function Chat() {
   }
 
   const handleNewChat = useCallback(() => {
+    abStreamRef.current?.abort()
+    abStreamRef.current = null
+    setActiveAb(null)
     skipNextPersistRef.current = true
     setMessages([])
     setInput("")
@@ -276,7 +395,7 @@ export function Chat() {
       },
       allowInInput: true,
     },
-    { combo: "escape", handler: () => { if (isLoading) stop() } },
+    { combo: "escape", handler: () => { if (isAbLoading) abStreamRef.current?.abort(); else if (isLoading) stop() } },
     { combo: "shift+?", handler: () => setShortcutsOpen(true) },
   ])
 
@@ -284,6 +403,9 @@ export function Chat() {
     (id: string) => {
       const s = history.get(id)
       if (!s) return
+      abStreamRef.current?.abort()
+      abStreamRef.current = null
+      setActiveAb(null)
       skipNextPersistRef.current = true
       setAttachedFiles([])
       setSessionId(s.id)
@@ -340,6 +462,9 @@ export function Chat() {
     (id: string) => {
       history.remove(id)
       if (id === sessionId) {
+        abStreamRef.current?.abort()
+        abStreamRef.current = null
+        setActiveAb(null)
         skipNextPersistRef.current = true
         setMessages([])
         setAttachedFiles([])
@@ -352,6 +477,9 @@ export function Chat() {
 
   const handleClearAll = useCallback(() => {
     history.clearAll()
+    abStreamRef.current?.abort()
+    abStreamRef.current = null
+    setActiveAb(null)
     skipNextPersistRef.current = true
     setMessages([])
     setAttachedFiles([])
@@ -440,7 +568,7 @@ export function Chat() {
   const handleComposerSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault()
-      if (isLoading) return
+      if (isLoading || isAbLoading) return
 
       const textBlocks: string[] = []
       const attachments: any[] = []
@@ -467,7 +595,28 @@ export function Chat() {
 
       await sendUserMessage(userMessage)
     },
-    [attachedFiles, input, isLoading, sendUserMessage]
+    [attachedFiles, input, isAbLoading, isLoading, sendUserMessage]
+  )
+
+  const handleStopAb = useCallback(() => {
+    abStreamRef.current?.abort()
+    abStreamRef.current = null
+  }, [])
+
+  const handlePickAb = useCallback(
+    (side: "a" | "b") => {
+      if (!activeAb) return
+      const content = activeAb[side].content.trim()
+      if (!content) return
+      setMessages((current) => [
+        ...current,
+        { id: newId(), role: "assistant", content } as any,
+      ] as any)
+      setActiveAb(null)
+      abStreamRef.current = null
+      window.dispatchEvent(new CustomEvent("tans:assistant-finished"))
+    },
+    [activeAb, setMessages]
   )
 
   return (
@@ -507,7 +656,7 @@ export function Chat() {
           onChange={handleProviderChange}
           onPersonaChange={setPersona}
           onNewChat={handleNewChat}
-          canNewChat={hasVisibleMessages && !isLoading}
+          canNewChat={hasVisibleMessages && !isLoading && !isAbLoading}
           onOpenMenu={() => setSidebarOpen(true)}
           onOpenMemory={() => setMemoryOpen(true)}
           onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
@@ -519,7 +668,15 @@ export function Chat() {
       </div>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4">
+        <div className={cn("mx-auto px-4", activeAb ? "max-w-5xl" : "max-w-3xl")}>
+          <div className="pt-3">
+            <AbToggle
+              value={abMode}
+              onChange={setAbMode}
+              disabled={!!ragActiveCollectionId}
+              notice={ragActiveCollectionId ? "A/B tạm tắt khi RAG đang active." : undefined}
+            />
+          </div>
           {hasVisibleMessages && (
             <div className="sticky top-3 z-20 mt-3 flex justify-end">
               <button
@@ -568,6 +725,7 @@ export function Chat() {
                   </div>
                 )
               })}
+              {activeAb && <AbCompare a={activeAb.a} b={activeAb.b} onPick={handlePickAb} />}
               {error && (
                 <div className="fade-up flex gap-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 text-destructive">
@@ -601,8 +759,8 @@ export function Chat() {
             value={input}
             onChange={(v) => handleInputChange({ target: { value: v } } as any)}
             onSubmit={handleComposerSubmit}
-            onStop={stop}
-            isStreaming={isLoading}
+            onStop={isAbLoading ? handleStopAb : stop}
+            isStreaming={isLoading || isAbLoading}
             tokenStats={tokenStats}
             messages={messages}
             model={model}

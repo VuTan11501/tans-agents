@@ -594,7 +594,7 @@ function SessionItem({
     {shareNotice && (
       <div
         className={cn(
-          "fixed bottom-4 right-4 z-[60] rounded-lg border px-3 py-2 text-xs shadow-lg",
+          "fixed bottom-4 right-4 z-30 rounded-lg border px-3 py-2 text-xs shadow-lg",
           shareNotice.type === "success"
             ? "border-emerald-500/30 bg-emerald-500 text-white"
             : "border-destructive/30 bg-destructive text-destructive-foreground"

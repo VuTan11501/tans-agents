@@ -174,7 +174,7 @@ export function VoiceMode() {
   const listening = status === "listening" && !unavailable
 
   return (
-    <div className="fixed bottom-24 right-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-3xl border border-border/70 bg-background/95 p-4 shadow-2xl backdrop-blur-xl sm:bottom-6">
+    <div className="fixed bottom-24 right-4 z-30 w-[min(22rem,calc(100vw-2rem))] rounded-3xl border border-border/70 bg-background/95 p-4 shadow-2xl backdrop-blur-xl sm:bottom-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold">

@@ -6,6 +6,7 @@ import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
 import { compactMessagesIfNeeded } from "@/lib/compactor"
+import { selfCritiqueResponse, shouldSelfCritique } from "@/lib/critique"
 
 export const runtime = "edge"
 export const maxDuration = 30
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
     const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
     const m = autoRoute?.modelId || model || PROVIDERS[p].default
     const autoCompact = req.headers.get("X-Auto-Compact") === "1"
+    const selfCritique = req.headers.get("X-Self-Critique") === "1"
     const compacted = autoCompact
       ? await compactMessagesIfNeeded({ messages, modelId: m, compactModel: getCompactionModel() })
       : undefined
@@ -104,10 +106,13 @@ export async function POST(req: Request) {
       async start(controller) {
         controller.enqueue(encoder.encode(`: connected\n\n`))
         let finishReason = "stop"
+        let assistantText = ""
+        let hadError = false
         try {
           for await (const part of result.fullStream) {
             switch (part.type) {
               case "text-delta":
+                assistantText += part.textDelta
                 send(controller, {
                   choices: [{ delta: { content: part.textDelta }, finish_reason: null }],
                 })
@@ -152,6 +157,7 @@ export async function POST(req: Request) {
                 finishReason = String(part.finishReason ?? "stop")
                 break
               case "error":
+                hadError = true
                 send(controller, {
                   error: {
                     message:
@@ -165,8 +171,24 @@ export async function POST(req: Request) {
             }
           }
         } catch (err: any) {
+          hadError = true
           send(controller, { error: { message: err?.message ?? "stream error" } })
         } finally {
+          if (selfCritique && !hadError && shouldSelfCritique(assistantText)) {
+            const improved = await selfCritiqueResponse({
+              model: getModel(p, m),
+              messages: finalMessages,
+              response: assistantText,
+            })
+            send(controller, {
+              choices: [
+                {
+                  delta: { content: `\n\n---\n**Tự đánh giá:**\n${improved}` },
+                  finish_reason: null,
+                },
+              ],
+            })
+          }
           send(controller, { choices: [{ delta: {}, finish_reason: finishReason }] })
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`))
           controller.close()
