@@ -422,25 +422,140 @@ export const wikipedia = tool({
 })
 
 export const fetchUrl = tool({
-  description: "Fetch a public URL and extract readable HTML text. Use when user asks to read a webpage.",
-  parameters: z.object({ url: z.string().url().describe("HTTP or HTTPS URL to fetch") }),
-  execute: async ({ url }) => {
+  description:
+    "Fetch a public URL and return its readable content as clean markdown. " +
+    "Uses Jina Reader (r.jina.ai) when JINA_API_KEY is set — handles JS-rendered pages, paywalls (limited), strips ads/nav. " +
+    "Falls back to raw HTML strip otherwise. Use when user asks to read/summarize a webpage, article, blog, docs page.",
+  parameters: z.object({
+    url: z.string().url().describe("HTTP or HTTPS URL to fetch"),
+    maxChars: z.number().int().min(500).max(40000).optional().describe("Max chars to return (default 12000)"),
+  }),
+  execute: async ({ url, maxChars }) => {
     try {
       const parsed = new URL(url)
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return { error: "only http/https URLs are supported" }
+      const cap = maxChars ?? 12000
+
+      // Prefer Jina Reader - returns clean markdown, handles JS-rendered SPAs.
+      const jinaKey = process.env.JINA_API_KEY
+      try {
+        const readerUrl = `https://r.jina.ai/${parsed.toString()}`
+        const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" }
+        if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`
+        const r = await fetch(readerUrl, { headers })
+        if (r.ok) {
+          const text = await r.text()
+          if (text && text.length > 50) {
+            const titleMatch = text.match(/^Title:\s*(.+)$/m)
+            const title = titleMatch ? titleMatch[1].trim() : extractTitle(text) || parsed.hostname
+            return { url: parsed.toString(), title, source: "jina-reader", markdown: text.slice(0, cap) }
+          }
+        }
+      } catch {}
+
+      // Fallback: raw fetch + strip tags.
       const response = await fetch(parsed.toString(), { headers: { Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8" } })
       if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
       const html = await response.text()
       return {
         url: parsed.toString(),
         title: extractTitle(html),
-        text: stripHtml(html).slice(0, 8000),
+        source: "raw-html",
+        text: stripHtml(html).slice(0, cap),
       }
     } catch (e: unknown) {
       return { error: errorMessage(e, "fetch URL failed") }
     }
   },
 })
+
+export const youtubeTranscript = tool({
+  description:
+    "Fetch the transcript / captions of a YouTube video as plain text. " +
+    "Accepts youtube.com/watch?v=ID, youtu.be/ID, or just the 11-char video ID. " +
+    "Use when user wants to summarize, quote, or ask about a YouTube video.",
+  parameters: z.object({
+    url: z.string().describe("YouTube URL or 11-character video ID"),
+    lang: z.string().optional().describe("Preferred caption language code like 'en', 'vi', 'ja'. Default 'en' then auto-fallback."),
+  }),
+  execute: async ({ url, lang }) => {
+    try {
+      const videoId = parseYouTubeId(url)
+      if (!videoId) return { error: "Could not parse YouTube video ID from input" }
+      const preferred = (lang || "en").toLowerCase()
+
+      // Strategy: use the video's watch page → find caption track URL → fetch transcript XML.
+      const watchUrl = `https://www.youtube.com/watch?v=${videoId}&hl=${preferred}`
+      const watchRes = await fetch(watchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+          "Accept-Language": `${preferred},en;q=0.8`,
+        },
+      })
+      if (!watchRes.ok) return { error: `YouTube watch page returned ${watchRes.status}` }
+      const html = await watchRes.text()
+
+      // Extract player response JSON.
+      const playerMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/)
+      if (!playerMatch) return { error: "Could not find player response — video may be private or region-locked" }
+      let player: any
+      try { player = JSON.parse(playerMatch[1]) } catch { return { error: "Failed to parse player response" } }
+
+      const titleNode = player?.videoDetails?.title || ""
+      const tracks: any[] = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks || []
+      if (!Array.isArray(tracks) || tracks.length === 0) {
+        return { error: "Video has no captions available", videoId, title: titleNode }
+      }
+      const pick =
+        tracks.find((t) => t?.languageCode?.toLowerCase() === preferred) ||
+        tracks.find((t) => t?.languageCode?.toLowerCase()?.startsWith(preferred.slice(0, 2))) ||
+        tracks[0]
+      const baseUrl: string = pick?.baseUrl
+      if (!baseUrl) return { error: "No caption track URL found" }
+
+      const xmlRes = await fetch(baseUrl + "&fmt=json3")
+      if (!xmlRes.ok) return { error: `Caption fetch returned ${xmlRes.status}` }
+      const json = (await xmlRes.json().catch(() => null)) as any
+      const events: any[] = json?.events || []
+      let transcript = ""
+      for (const ev of events) {
+        const segs = ev?.segs || []
+        for (const s of segs) transcript += (s?.utf8 || "").replace(/\n/g, " ")
+        transcript += " "
+      }
+      transcript = transcript.replace(/\s+/g, " ").trim()
+      if (transcript.length === 0) return { error: "Transcript is empty" }
+
+      return {
+        videoId,
+        title: titleNode,
+        language: pick?.languageCode || preferred,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        chars: transcript.length,
+        transcript: transcript.slice(0, 20000),
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "YouTube transcript failed") }
+    }
+  },
+})
+
+function parseYouTubeId(input: string): string | null {
+  const s = input.trim()
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s
+  try {
+    const u = new URL(s)
+    if (u.hostname === "youtu.be") return u.pathname.replace(/^\//, "").slice(0, 11) || null
+    if (u.hostname.endsWith("youtube.com")) {
+      const v = u.searchParams.get("v")
+      if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v
+      const m = u.pathname.match(/\/(?:embed|shorts|v)\/([A-Za-z0-9_-]{11})/)
+      if (m) return m[1]
+    }
+  } catch {}
+  return null
+}
 
 export const generateImage = tool({
   description:
@@ -748,7 +863,108 @@ export const searchCollection = tool({
   }),
 })
 
-export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, generateImage, chartGen, mermaid, runPython, runJs, cryptoPrice, stockPrice, translate, githubQuery, emailCompose, searchCollection }
+export const runSql = tool({
+  description:
+    "Run a SQL SELECT/aggregation on inline JSON or CSV data using alasql (in-memory SQLite-like). " +
+    "Pass `data` as an array of objects OR a CSV string. Reference the dataset as `?` in the query " +
+    "(e.g. `SELECT name, AVG(score) FROM ? GROUP BY name`). Read-only — INSERT/UPDATE/DELETE/DROP rejected. " +
+    "Use for: analyzing tables the user pasted, exploring CSV data, computing aggregates over JSON.",
+  parameters: z.object({
+    query: z.string().describe("SQL SELECT statement. Use ? to reference the dataset."),
+    data: z
+      .union([z.array(z.record(z.any())), z.string()])
+      .describe("Array of row objects, OR a CSV string with header row."),
+    format: z.enum(["json", "csv"]).optional().describe("Input format hint when data is a string. Default 'csv'."),
+  }),
+  execute: async ({ query, data, format }) => {
+    try {
+      const q = String(query).trim()
+      if (!/^\s*(SELECT|WITH|VALUES)\b/i.test(q)) {
+        return { error: "Only SELECT/WITH/VALUES queries allowed (read-only)." }
+      }
+      if (/\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE\s+(TABLE|DATABASE)|ATTACH|DETACH)\b/i.test(q)) {
+        return { error: "Mutation/DDL keywords not allowed." }
+      }
+      let rows: any[] = []
+      if (Array.isArray(data)) {
+        rows = data
+      } else if (typeof data === "string") {
+        const fmt = format || "csv"
+        if (fmt === "json") {
+          try {
+            const parsed = JSON.parse(data)
+            if (!Array.isArray(parsed)) return { error: "JSON must be an array of objects." }
+            rows = parsed
+          } catch (e) {
+            return { error: "Invalid JSON: " + (e as Error).message }
+          }
+        } else {
+          rows = parseCsv(data)
+        }
+      } else {
+        return { error: "data must be array or string." }
+      }
+      if (rows.length > 50000) return { error: `Too many rows (${rows.length} > 50000).` }
+      const alasqlMod: any = await import("alasql")
+      const alasql = alasqlMod.default || alasqlMod
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 5000)
+      try {
+        const result = alasql(q, [rows])
+        clearTimeout(timer)
+        const sample = Array.isArray(result) ? result.slice(0, 200) : result
+        return {
+          inputRows: rows.length,
+          resultRows: Array.isArray(result) ? result.length : 1,
+          rows: sample,
+          truncated: Array.isArray(result) && result.length > 200,
+        }
+      } catch (e: unknown) {
+        clearTimeout(timer)
+        return { error: "SQL error: " + errorMessage(e, "execution failed") }
+      }
+    } catch (e: unknown) {
+      return { error: errorMessage(e, "runSql failed") }
+    }
+  },
+})
+
+function parseCsv(text: string): Record<string, any>[] {
+  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.length > 0)
+  if (lines.length === 0) return []
+  const split = (line: string) => {
+    const out: string[] = []
+    let cur = ""
+    let inQuote = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (inQuote) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++ }
+        else if (ch === '"') { inQuote = false }
+        else cur += ch
+      } else {
+        if (ch === '"') inQuote = true
+        else if (ch === ",") { out.push(cur); cur = "" }
+        else cur += ch
+      }
+    }
+    out.push(cur)
+    return out
+  }
+  const header = split(lines[0]).map((h) => h.trim())
+  return lines.slice(1).map((line) => {
+    const cells = split(line)
+    const obj: Record<string, any> = {}
+    header.forEach((h, i) => {
+      const v = (cells[i] ?? "").trim()
+      const n = v === "" ? NaN : Number(v)
+      obj[h] = v !== "" && !isNaN(n) ? n : v
+    })
+    return obj
+  })
+}
+
+export const agentTools = { currentTime, calculator, webSearch, weather, wikipedia, fetchUrl, youtubeTranscript, generateImage, chartGen, mermaid, runPython, runJs, runSql, cryptoPrice, stockPrice, translate, githubQuery, emailCompose, searchCollection }
 export const TOOL_NAMES = Object.keys(agentTools)
 export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   currentTime: "Thời gian",
@@ -757,11 +973,13 @@ export const TOOL_LABELS: Record<keyof typeof agentTools, string> = {
   weather: "Thời tiết",
   wikipedia: "Wikipedia",
   fetchUrl: "Đọc URL",
+  youtubeTranscript: "Phụ đề YouTube",
   generateImage: "Tạo ảnh",
   chartGen: "Vẽ biểu đồ",
   mermaid: "Vẽ sơ đồ",
   runPython: "Chạy Python",
   runJs: "Chạy JavaScript",
+  runSql: "Chạy SQL",
   cryptoPrice: "Giá crypto",
   stockPrice: "Giá cổ phiếu",
   translate: "Dịch văn bản",
