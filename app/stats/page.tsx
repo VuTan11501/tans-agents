@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { clearEvents, getEvents, type Event } from "@/lib/analytics"
+import { getTtftSamples, summarizeByProvider, clearTtft, type ProviderTtftStats } from "@/lib/latency-tracker"
+import { getWinners, modelLeaderboard, clearWinners, type AbWinnerRow, type ModelWinrate } from "@/lib/ab-winner"
 
 const BAR_DAYS = 7
 const DONUT_COLORS = ["#8b5cf6", "#06b6d4", "#f97316", "#22c55e", "#ec4899", "#eab308"]
@@ -12,9 +14,13 @@ const DONUT_COLORS = ["#8b5cf6", "#06b6d4", "#f97316", "#22c55e", "#ec4899", "#e
 export default function StatsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [ttftStats, setTtftStats] = useState<ProviderTtftStats[]>([])
+  const [winnerRows, setWinnerRows] = useState<AbWinnerRow[]>([])
 
   useEffect(() => {
     setEvents(getEvents())
+    setTtftStats(summarizeByProvider(getTtftSamples()))
+    setWinnerRows(getWinners())
     setLoaded(true)
   }, [])
 
@@ -83,9 +89,29 @@ export default function StatsPage() {
       .map(([tool, count]) => ({ tool, count }))
   }, [events])
 
+  const winnerLeaderboard = useMemo<ModelWinrate[]>(() => modelLeaderboard(winnerRows), [winnerRows])
+
+  // Cost-by-day matrix: total messages × per-model count, grouped by ISO date.
+  const usageByDay = useMemo(() => {
+    const map = new Map<string, { day: string; messages: number; tools: number; errors: number }>()
+    for (const ev of events) {
+      const day = new Date(ev.time).toISOString().slice(0, 10)
+      const row = map.get(day) ?? { day, messages: 0, tools: 0, errors: 0 }
+      if (ev.type === "message_received" || ev.type === "message_sent") row.messages += 1
+      else if (ev.type === "tool_call") row.tools += 1
+      else if (ev.type === "error") row.errors += 1
+      map.set(day, row)
+    }
+    return [...map.values()].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 14)
+  }, [events])
+
   function handleClear() {
     clearEvents()
+    clearTtft()
+    clearWinners()
     setEvents([])
+    setTtftStats([])
+    setWinnerRows([])
   }
 
   function handleDownload() {
@@ -203,6 +229,110 @@ export default function StatsPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Latency leaderboard (TTFT)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {ttftStats.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có dữ liệu TTFT. Chat vài câu để thu thập.</p>
+                  ) : (
+                    <div className="overflow-hidden rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Provider</th>
+                            <th className="px-3 py-2 text-right font-medium">p50</th>
+                            <th className="px-3 py-2 text-right font-medium">p95</th>
+                            <th className="px-3 py-2 text-right font-medium">Samples</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ttftStats.map((row) => (
+                            <tr key={row.provider} className="border-t">
+                              <td className="px-3 py-2 font-mono text-xs">{row.provider}</td>
+                              <td className="px-3 py-2 text-right">{formatLatency(row.p50Ms)}</td>
+                              <td className="px-3 py-2 text-right">{formatLatency(row.p95Ms)}</td>
+                              <td className="px-3 py-2 text-right">{row.samples}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>A/B winners</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {winnerLeaderboard.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Chưa có lượt vote. Bật chế độ A/B và chọn câu trả lời ưa thích.</p>
+                  ) : (
+                    <div className="overflow-hidden rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Model</th>
+                            <th className="px-3 py-2 text-right font-medium">Win %</th>
+                            <th className="px-3 py-2 text-right font-medium">W / L / T</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {winnerLeaderboard.slice(0, 8).map((row) => (
+                            <tr key={row.model} className="border-t">
+                              <td className="px-3 py-2 font-mono text-xs">{row.model}</td>
+                              <td className="px-3 py-2 text-right">{Math.round(row.winRate * 100)}%</td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {row.wins} / {row.losses} / {row.ties}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Usage by day (last 14)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {usageByDay.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Chưa có dữ liệu.</p>
+                ) : (
+                  <div className="overflow-hidden rounded-md border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Ngày</th>
+                          <th className="px-3 py-2 text-right font-medium">Messages</th>
+                          <th className="px-3 py-2 text-right font-medium">Tools</th>
+                          <th className="px-3 py-2 text-right font-medium">Errors</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usageByDay.map((row) => (
+                          <tr key={row.day} className="border-t">
+                            <td className="px-3 py-2 font-mono text-xs">{row.day}</td>
+                            <td className="px-3 py-2 text-right">{row.messages}</td>
+                            <td className="px-3 py-2 text-right">{row.tools}</td>
+                            <td className="px-3 py-2 text-right">{row.errors}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>

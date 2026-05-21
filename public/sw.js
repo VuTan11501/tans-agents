@@ -1,34 +1,70 @@
-const CACHE = "tans-agent-v1"
-const APP_SHELL = ["/", "/manifest.json", "/icon.svg"]
+const CACHE_NAME = "tans-agents-static-v1"
+const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/manifest.json", "/icon.svg", "/favicon.ico"]
 
-self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(APP_SHELL)).then(() => self.skipWaiting()))
-})
-self.addEventListener("activate", (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        PRECACHE_URLS.map((url) =>
+          cache.add(url).catch(() => undefined),
+        ),
+      ),
+    ),
   )
 })
-self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url)
-  // Never cache API or non-GET
-  if (e.request.method !== "GET" || url.pathname.startsWith("/api/")) return
-  // Network-first for navigations; cache-first for static assets
-  if (e.request.mode === "navigate") {
-    e.respondWith(
-      fetch(e.request).then((r) => {
-        const copy = r.clone()
-        caches.open(CACHE).then((c) => c.put(e.request, copy))
-        return r
-      }).catch(() => caches.match(e.request).then((r) => r || caches.match("/")))
-    )
-  } else if (url.origin === self.location.origin) {
-    e.respondWith(
-      caches.match(e.request).then((r) => r || fetch(e.request).then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)) }
-        return res
-      }))
-    )
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  )
+})
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting()
   }
 })
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request
+  const url = new URL(request.url)
+
+  if (url.origin !== self.location.origin) return
+  if (url.pathname.startsWith("/api/")) return
+  if (request.method !== "GET") return
+
+  if (shouldUseStaleWhileRevalidate(request, url)) {
+    event.respondWith(staleWhileRevalidate(request))
+  }
+})
+
+function shouldUseStaleWhileRevalidate(request, url) {
+  return (
+    url.pathname === "/" ||
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/manifest.json" ||
+    url.pathname === "/favicon.ico" ||
+    url.pathname.endsWith(".ico") ||
+    url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".svg")
+  )
+}
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME)
+  const cached = await cache.match(request)
+  const fetched = fetch(request)
+    .then((response) => {
+      if (response && response.ok) {
+        cache.put(request, response.clone())
+      }
+      return response
+    })
+    .catch(() => undefined)
+
+  return cached || (await fetched) || Response.error()
+}

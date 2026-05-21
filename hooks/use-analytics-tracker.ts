@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { logEvent } from "@/lib/analytics"
+import { recordTtft } from "@/lib/latency-tracker"
 
 type ChatMessage = {
   id?: string
@@ -34,6 +35,7 @@ export function useAnalyticsTracker({ messages = [], isLoading = false, error }:
   const initializedRef = useRef(false)
   const loggedMessagesRef = useRef(new Set<string>())
   const loggedToolsRef = useRef(new Set<string>())
+  const loggedTtftRef = useRef(new Set<string>())
   const lastUserSentAtRef = useRef<number | null>(null)
   const lastErrorRef = useRef<string | null>(null)
 
@@ -60,6 +62,27 @@ export function useAnalyticsTracker({ messages = [], isLoading = false, error }:
           model: message.model,
           provider: message.provider,
         })
+      }
+
+      // TTFT: first time an assistant message appears (even mid-stream).
+      if (
+        message.role === "assistant" &&
+        !loggedTtftRef.current.has(key) &&
+        lastUserSentAtRef.current &&
+        typeof message.content === "string" &&
+        message.content.length > 0
+      ) {
+        const now = Date.now()
+        const ttftMs = now - lastUserSentAtRef.current
+        loggedTtftRef.current.add(key)
+        if (message.provider && message.model) {
+          recordTtft({
+            provider: message.provider,
+            model: message.model,
+            ttftMs,
+            at: now,
+          })
+        }
       }
 
       if (message.role === "assistant" && !isLoading && !loggedMessagesRef.current.has(key)) {

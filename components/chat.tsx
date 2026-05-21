@@ -719,6 +719,25 @@ export function Chat() {
       if (!activeAb) return
       const content = activeAb[side].content.trim()
       if (!content) return
+      // Record A/B winner for analytics + future model suggestion.
+      try {
+        const lastUserMsg = [...messagesRef.current]
+          .reverse()
+          .find((m: any) => m.role === "user")?.content
+        if (typeof lastUserMsg === "string" && lastUserMsg.trim()) {
+          void import("@/lib/ab-winner").then(({ recordWinner, normalizePromptKey }) => {
+            recordWinner({
+              promptKey: normalizePromptKey(lastUserMsg),
+              modelA: activeAb.a.model,
+              modelB: activeAb.b.model,
+              winner: side === "a" ? "A" : "B",
+              at: Date.now(),
+            })
+          })
+        }
+      } catch {
+        /* ignore */
+      }
       setMessages((current) => [
         ...current,
         { id: newId(), role: "assistant", content } as any,
