@@ -76,6 +76,28 @@ const RULES: Record<ProviderKey, LimitRule[]> = {
     // Catch-all: assume Low tier (an toàn cho user vì không under-warn).
     { match: /.*/, rpd: 150, note: "GitHub Free (mặc định Low tier): 150 req/ngày" },
   ],
+  openrouter: [
+    // OpenRouter free tier — verified từ openrouter.ai/docs/limits (2026-05).
+    // Models có suffix `:free` cap theo account: 50 req/ngày nếu chưa từng nạp,
+    // 1000 req/ngày nếu đã từng nạp ≥$10. RPM = 20 cho free models.
+    // CHÚ Ý: OpenRouter trả headers thật → bảng này chỉ là fallback.
+    { match: /:free$/i, rpd: 50, note: "OpenRouter free: 50 req/ngày/model (1000 nếu đã nạp ≥$10). 20 RPM." },
+    { match: /.*/, rpd: null, note: "OpenRouter paid model — billing theo token, không cap/ngày" },
+  ],
+  cerebras: [
+    // Cerebras free tier — verified từ cloud.cerebras.ai/limits (2026-05).
+    // Đồng đều 14,400 req/ngày + 30 RPM cho mọi model trên free plan.
+    // Cerebras trả x-ratelimit-* headers thật.
+    { match: /.*/, rpd: 14400, note: "Cerebras free: 14,400 req/ngày (30 RPM, 60K TPM)" },
+  ],
+  mistral: [
+    // Mistral La Plateforme free tier — verified từ docs.mistral.ai/deployment/laplateforme/tier (2026-05).
+    // Free tier không có RPD cap riêng, chỉ 1 RPS (60 RPM) + 500K TPM + 1B tokens/THÁNG.
+    // Practically unlimited theo ngày cho normal use.
+    { match: /codestral/i, rpd: null, note: "Mistral free: 1 RPS, 500K TPM, 1B tokens/tháng" },
+    { match: /ministral/i, rpd: null, note: "Mistral free: 1 RPS, 500K TPM, 1B tokens/tháng" },
+    { match: /.*/, rpd: null, note: "Mistral free: 1 RPS, 500K TPM, 1B tokens/tháng" },
+  ],
 }
 
 export function getModelLimit(provider: ProviderKey, model: string): LimitRule {

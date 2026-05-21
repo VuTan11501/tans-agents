@@ -39,6 +39,45 @@ export const PROVIDERS = {
     ],
     default: "gpt-4o-mini",
   },
+  openrouter: {
+    label: "OpenRouter (50+ free models)",
+    envKey: "OPENROUTER_API_KEY",
+    // Free tier: 50 req/ngày/model với suffix `:free`. 1 key mở khóa nhiều model open-source.
+    // Curated từ openrouter.ai/models?max_price=0 (top free models 2026-05).
+    models: [
+      "deepseek/deepseek-chat-v3-0324:free",
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "qwen/qwen-2.5-72b-instruct:free",
+      "mistralai/mistral-small-3.1-24b-instruct:free",
+      "nvidia/llama-3.1-nemotron-70b-instruct:free",
+      "google/gemma-3-27b-it:free",
+    ],
+    default: "deepseek/deepseek-chat-v3-0324:free",
+  },
+  cerebras: {
+    label: "Cerebras (>2000 t/s)",
+    envKey: "CEREBRAS_API_KEY",
+    // Free tier: 30 RPM + 14,400 RPD, inference cực nhanh nhờ wafer-scale chip.
+    models: [
+      "llama-3.3-70b",
+      "llama3.1-8b",
+      "qwen-3-32b",
+      "gpt-oss-120b",
+    ],
+    default: "llama-3.3-70b",
+  },
+  mistral: {
+    label: "Mistral La Plateforme",
+    envKey: "MISTRAL_API_KEY",
+    // Free tier: 1 RPS + 1B tokens/tháng. Codestral chuyên code.
+    models: [
+      "mistral-small-latest",
+      "ministral-8b-latest",
+      "ministral-3b-latest",
+      "codestral-latest",
+    ],
+    default: "mistral-small-latest",
+  },
 } as const
 
 export type ProviderKey = keyof typeof PROVIDERS

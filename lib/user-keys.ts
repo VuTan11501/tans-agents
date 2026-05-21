@@ -3,6 +3,8 @@ export type UserKeys = {
   gemini?: string
   github?: string
   openrouter?: string
+  cerebras?: string
+  mistral?: string
   brave?: string
 }
 
@@ -10,7 +12,7 @@ export type UserKeyProvider = keyof UserKeys
 
 export const USER_KEYS_STORAGE_KEY = "tans-agents:keys"
 
-const PROVIDERS: UserKeyProvider[] = ["groq", "gemini", "github", "openrouter", "brave"]
+const PROVIDERS: UserKeyProvider[] = ["groq", "gemini", "github", "openrouter", "cerebras", "mistral", "brave"]
 
 function sanitizeKeys(value: unknown): UserKeys {
   if (!value || typeof value !== "object") return {}

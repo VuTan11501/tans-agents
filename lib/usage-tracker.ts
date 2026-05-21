@@ -28,14 +28,34 @@ export async function hashApiKey(apiKey: string): Promise<string> {
 /** Resolve which API key would actually be used for a given provider, mirroring chat route logic. */
 export async function resolveApiKeyFingerprint(provider: ProviderKey, userKeys?: UserKeys): Promise<string | null> {
   const userKey =
-    provider === "google" ? userKeys?.gemini : provider === "groq" ? userKeys?.groq : userKeys?.github
+    provider === "google"
+      ? userKeys?.gemini
+      : provider === "groq"
+      ? userKeys?.groq
+      : provider === "github"
+      ? userKeys?.github
+      : provider === "openrouter"
+      ? userKeys?.openrouter
+      : provider === "cerebras"
+      ? userKeys?.cerebras
+      : provider === "mistral"
+      ? userKeys?.mistral
+      : undefined
   if (typeof userKey === "string" && userKey.trim()) return hashApiKey(userKey.trim())
   const envKey =
     provider === "google"
       ? process.env.GOOGLE_GENERATIVE_AI_API_KEY
       : provider === "groq"
       ? process.env.GROQ_API_KEY
-      : process.env.GITHUB_TOKEN
+      : provider === "github"
+      ? process.env.GITHUB_TOKEN
+      : provider === "openrouter"
+      ? process.env.OPENROUTER_API_KEY
+      : provider === "cerebras"
+      ? process.env.CEREBRAS_API_KEY
+      : provider === "mistral"
+      ? process.env.MISTRAL_API_KEY
+      : undefined
   if (envKey) return hashApiKey(envKey)
   return null
 }

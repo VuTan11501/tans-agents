@@ -37,6 +37,9 @@ function hasApiKey(provider: ProviderKey, userKeys?: UserKeys) {
   if (provider === "google") return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY)
   if (provider === "groq") return Boolean(process.env.GROQ_API_KEY)
   if (provider === "github") return Boolean(process.env.GITHUB_TOKEN)
+  if (provider === "openrouter") return Boolean(process.env.OPENROUTER_API_KEY)
+  if (provider === "cerebras") return Boolean(process.env.CEREBRAS_API_KEY)
+  if (provider === "mistral") return Boolean(process.env.MISTRAL_API_KEY)
   return false
 }
 
@@ -57,6 +60,29 @@ function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
     const apiKey = userApiKey || process.env.GITHUB_TOKEN
     if (!apiKey) throw new Error("Missing GITHUB_TOKEN")
     return createOpenAI({ apiKey, baseURL: "https://models.inference.ai.azure.com" })(modelId)
+  }
+  if (provider === "openrouter") {
+    const apiKey = userApiKey || process.env.OPENROUTER_API_KEY
+    if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY")
+    return createOpenAI({
+      apiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+      headers: {
+        // OpenRouter recommends these for analytics/leaderboards (optional).
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://tans-agents",
+        "X-Title": "Tan's Agents",
+      },
+    })(modelId)
+  }
+  if (provider === "cerebras") {
+    const apiKey = userApiKey || process.env.CEREBRAS_API_KEY
+    if (!apiKey) throw new Error("Missing CEREBRAS_API_KEY")
+    return createOpenAI({ apiKey, baseURL: "https://api.cerebras.ai/v1" })(modelId)
+  }
+  if (provider === "mistral") {
+    const apiKey = userApiKey || process.env.MISTRAL_API_KEY
+    if (!apiKey) throw new Error("Missing MISTRAL_API_KEY")
+    return createOpenAI({ apiKey, baseURL: "https://api.mistral.ai/v1" })(modelId)
   }
   throw new Error(`Unknown provider: ${provider}`)
 }

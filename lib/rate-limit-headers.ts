@@ -68,6 +68,29 @@ export function parseRateLimitHeaders(
     return { remaining, limit, resetSeconds, window: "day", source: "provider", ts: Date.now() }
   }
 
-  // Google / Gemini do not expose rate-limit headers.
+  if (provider === "openrouter") {
+    // OpenRouter dùng cùng pattern OpenAI-compat: x-ratelimit-remaining + x-ratelimit-limit.
+    // Reset là epoch ms (không phải epoch giây như GitHub).
+    const remaining = num(headers, "x-ratelimit-remaining")
+    const limit = num(headers, "x-ratelimit-limit")
+    const resetEpochMs = num(headers, "x-ratelimit-reset")
+    if (remaining == null || limit == null) return null
+    const resetSeconds =
+      resetEpochMs != null ? Math.max(0, Math.floor((resetEpochMs - Date.now()) / 1000)) : undefined
+    return { remaining, limit, resetSeconds, window: "day", source: "provider", ts: Date.now() }
+  }
+
+  if (provider === "cerebras") {
+    // Cerebras dùng pattern Groq-compat (cùng kiểu x-ratelimit-*-requests).
+    const remaining = num(headers, "x-ratelimit-remaining-requests-day") ?? num(headers, "x-ratelimit-remaining-requests")
+    const limit = num(headers, "x-ratelimit-limit-requests-day") ?? num(headers, "x-ratelimit-limit-requests")
+    const reset =
+      parseResetSeconds(get("x-ratelimit-reset-requests-day")) ??
+      parseResetSeconds(get("x-ratelimit-reset-requests"))
+    if (remaining == null || limit == null) return null
+    return { remaining, limit, resetSeconds: reset, window: "day", source: "provider", ts: Date.now() }
+  }
+
+  // Google / Gemini / Mistral La Plateforme do not expose standard rate-limit headers.
   return null
 }

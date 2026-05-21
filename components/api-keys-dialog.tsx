@@ -11,7 +11,9 @@ const PROVIDERS: Array<{ key: UserKeyProvider; label: string; href: string }> = 
   { key: "groq", label: "Groq", href: "https://groq.com/keys" },
   { key: "gemini", label: "Gemini", href: "https://ai.dev" },
   { key: "github", label: "GitHub Models", href: "https://github.com/settings/personal-access-tokens" },
-  { key: "openrouter", label: "OpenRouter", href: "https://openrouter.ai/keys" },
+  { key: "openrouter", label: "OpenRouter (50+ free)", href: "https://openrouter.ai/keys" },
+  { key: "cerebras", label: "Cerebras (>2000 t/s)", href: "https://cloud.cerebras.ai/platform/api-keys" },
+  { key: "mistral", label: "Mistral", href: "https://console.mistral.ai/api-keys" },
   { key: "brave", label: "Brave Search", href: "https://brave.com/search/api" },
 ]
 
@@ -30,6 +32,8 @@ export function ApiKeysDialog({ open, onOpenChange, keys, setKey, clearAll }: Ap
     gemini: false,
     github: false,
     openrouter: false,
+    cerebras: false,
+    mistral: false,
     brave: false,
   })
 
