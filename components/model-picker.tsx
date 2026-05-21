@@ -177,27 +177,35 @@ export function ModelPicker({
                   </DropdownMenuItem>
                 )
               })}
-              <DropdownMenuItem
-                onSelect={(e) => {
+              <button
+                type="button"
+                disabled={isDiscovering}
+                aria-busy={isDiscovering}
+                onClick={(e) => {
                   e.preventDefault()
+                  e.stopPropagation()
                   if (isDiscovering) return
                   handleDiscover(pTyped)
                 }}
-                disabled={isDiscovering}
-                aria-busy={isDiscovering}
+                onPointerDown={(e) => {
+                  // Prevent Radix from closing the dropdown on touchstart.
+                  e.stopPropagation()
+                }}
                 className={cn(
-                  "gap-2 text-[11px] text-muted-foreground",
-                  isDiscovering && "pointer-events-none cursor-not-allowed opacity-70",
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[11px] text-muted-foreground outline-none transition-colors",
+                  isDiscovering
+                    ? "cursor-not-allowed opacity-70"
+                    : "hover:bg-accent hover:text-foreground focus-visible:bg-accent",
                 )}
               >
                 {isDiscovering ? (
                   <>
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
                     <span>Đang quét {PROVIDERS[pTyped].label}...</span>
                   </>
                 ) : (
                   <>
-                    <RefreshCw className="h-3 w-3" aria-hidden />
+                    <RefreshCw className="h-3 w-3 shrink-0" aria-hidden />
                     <span>
                       {discoveredIds
                         ? `Quét lại (${discoveredIds.length} model)`
@@ -205,7 +213,7 @@ export function ModelPicker({
                     </span>
                   </>
                 )}
-              </DropdownMenuItem>
+              </button>
               {errMsg && (
                 <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">
                   {errMsg}
