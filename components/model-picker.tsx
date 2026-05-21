@@ -135,12 +135,12 @@ export function ModelPicker({
                 const limit = getModelLimit(pTyped, m)
                 const used = ModelStore.getUsage(pTyped, m)
                 const remaining = limit.rpd === null ? null : Math.max(0, limit.rpd - used)
-                const lowQuota = remaining !== null && remaining <= 5
+                const lowQuota = remaining !== null && limit.rpd !== null && remaining <= Math.max(3, limit.rpd * 0.05)
                 const exhausted = remaining !== null && remaining === 0
                 const badgeTitle =
                   limit.rpd === null
-                    ? `${limit.note ?? "Không giới hạn"} — đã dùng hôm nay: ${used}`
-                    : `Còn ${remaining}/${limit.rpd} req hôm nay (đã dùng ${used})`
+                    ? `${limit.note ?? "Không giới hạn"} — đã gọi qua app: ${used}`
+                    : `Đã dùng ${used}/${limit.rpd} req hôm nay (ước tính cục bộ — chỉ đếm request gửi qua Tan's Agent, provider thực tế có thể khác).`
                 return (
                   <DropdownMenuItem
                     key={m}
@@ -148,7 +148,6 @@ export function ModelPicker({
                     className={cn(
                       "font-mono text-xs",
                       (selected || onlyByModel) && "bg-accent",
-                      exhausted && "opacity-60",
                     )}
                   >
                     <span className="flex-1 break-all">{m}</span>
@@ -169,7 +168,7 @@ export function ModelPicker({
                         <InfinityIcon className="h-3 w-3" aria-label="Không giới hạn" />
                       ) : (
                         <>
-                          <span>{remaining}</span>
+                          <span>{used}</span>
                           <span className="opacity-60">/{limit.rpd}</span>
                         </>
                       )}
