@@ -2,6 +2,7 @@ import { streamText } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createGroq } from "@ai-sdk/groq"
 import { createOpenAI } from "@ai-sdk/openai"
+import { createMistral } from "@ai-sdk/mistral"
 import { agentTools } from "@/lib/tools"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
@@ -70,7 +71,7 @@ function getModel(provider: ProviderKey, modelId: string) {
   if (provider === "mistral") {
     const apiKey = process.env.MISTRAL_API_KEY
     if (!apiKey) throw new Error("Missing MISTRAL_API_KEY")
-    return createOpenAI({ apiKey, baseURL: "https://api.mistral.ai/v1" })(modelId)
+    return createMistral({ apiKey })(modelId)
   }
   throw new Error(`Unknown provider: ${provider}`)
 }
