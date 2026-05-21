@@ -10,7 +10,7 @@ import { selfCritiqueResponse, shouldSelfCritique } from "@/lib/critique"
 import type { UserKeys } from "@/lib/user-keys"
 
 export const runtime = "edge"
-export const maxDuration = 30
+export const maxDuration = 60
 
 const SYSTEM_PROMPT =
   "Bạn là Tan's Agent - AI assistant hữu ích, trả lời súc tích bằng tiếng Việt (trừ khi user dùng ngôn ngữ khác). " +
