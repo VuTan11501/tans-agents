@@ -62,7 +62,19 @@ export function ModelPicker({
 
   function handleDiscover(p: ProviderKey) {
     const userKey =
-      p === "google" ? userKeys?.gemini : p === "groq" ? userKeys?.groq : userKeys?.github
+      p === "google"
+        ? userKeys?.gemini
+        : p === "groq"
+        ? userKeys?.groq
+        : p === "github"
+        ? userKeys?.github
+        : p === "openrouter"
+        ? userKeys?.openrouter
+        : p === "cerebras"
+        ? userKeys?.cerebras
+        : p === "mistral"
+        ? userKeys?.mistral
+        : undefined
     void discoverModels(p, userKey)
   }
 
