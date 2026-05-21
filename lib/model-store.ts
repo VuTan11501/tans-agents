@@ -74,7 +74,9 @@ function loadUsage(): Record<string, number> {
   }
 }
 
-const state: State = {
+const subscribers = new Set<() => void>()
+
+let state: State = {
   discovered: typeof window !== "undefined" ? loadDiscovered() : {},
   discovering: null,
   discoverError: {},
@@ -82,10 +84,11 @@ const state: State = {
   rev: 0,
 }
 
-const subscribers = new Set<() => void>()
-
 function notify() {
-  state.rev++
+  // Replace state with a NEW object so useSyncExternalStore sees an Object.is
+  // change. Mutating fields on the existing reference would silently skip
+  // every re-render — that's why the spinner never appeared.
+  state = { ...state, rev: state.rev + 1 }
   subscribers.forEach((cb) => cb())
 }
 
