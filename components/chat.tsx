@@ -152,6 +152,20 @@ export function Chat() {
     },
     onFinish: () => {
       window.dispatchEvent(new CustomEvent("tans:assistant-finished"))
+      // Bump rate-limit usage counter for the model that produced this response.
+      // For "auto" routing the model field stays "auto" — we don't know the actual
+      // dispatched model here so we skip; the api/chat route is responsible for
+      // returning the resolved model in a header if we want better tracking later.
+      try {
+        if (model && model !== "auto") {
+          // Lazy import to avoid SSR pulling client store in build.
+          import("@/lib/model-store").then(({ ModelStore }) => {
+            ModelStore.incrementUsage(provider, model)
+          })
+        }
+      } catch {
+        /* ignore */
+      }
     },
   })
 
@@ -336,8 +350,20 @@ export function Chat() {
         callbacks: {
           onChunkA: (chunk) => patchAb((current) => ({ ...current, a: { ...current.a, content: current.a.content + chunk } })),
           onChunkB: (chunk) => patchAb((current) => ({ ...current, b: { ...current.b, content: current.b.content + chunk } })),
-          onDoneA: () => patchAb((current) => ({ ...current, a: { ...current.a, done: true } })),
-          onDoneB: () => patchAb((current) => ({ ...current, b: { ...current.b, done: true } })),
+          onDoneA: () => {
+            patchAb((current) => ({ ...current, a: { ...current.a, done: true } }))
+            void import("@/lib/model-store").then(({ ModelStore }) => {
+              const p = ModelStore.resolveProvider(abMode.modelA) ?? provider
+              ModelStore.incrementUsage(p, abMode.modelA)
+            })
+          },
+          onDoneB: () => {
+            patchAb((current) => ({ ...current, b: { ...current.b, done: true } }))
+            void import("@/lib/model-store").then(({ ModelStore }) => {
+              const p = ModelStore.resolveProvider(abMode.modelB) ?? provider
+              ModelStore.incrementUsage(p, abMode.modelB)
+            })
+          },
           onErrorA: (err) => handleError("a", err),
           onErrorB: (err) => handleError("b", err),
         },

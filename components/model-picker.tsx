@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { Check, ChevronDown } from "lucide-react"
+import { Check, ChevronDown, Infinity as InfinityIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,6 +13,8 @@ import {
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { UserKeys } from "@/lib/user-keys"
 import { cn } from "@/lib/utils"
+import { ModelStore, useModelStore, discoverModels } from "@/lib/model-store"
+import { getModelLimit } from "@/lib/rate-limits"
 
 interface ModelPickerProps {
   /** Currently-selected provider. If null, picker shows model only (no Auto / persona). */
@@ -54,32 +55,15 @@ export function ModelPicker({
   size = "sm",
   disabled,
 }: ModelPickerProps) {
-  const [discovered, setDiscovered] = useState<Partial<Record<ProviderKey, string[]>>>({})
-  const [discovering, setDiscovering] = useState<ProviderKey | null>(null)
-  const [discoverError, setDiscoverError] = useState<Partial<Record<ProviderKey, string>>>({})
+  const store = useModelStore()
+  const { discovered, discovering, discoverError } = store
   const isAutoModel = model === "auto"
   const providerLabel = provider ? PROVIDERS[provider].label : ""
 
-  async function discoverModels(p: ProviderKey) {
-    setDiscovering(p)
-    setDiscoverError((prev) => ({ ...prev, [p]: undefined }))
-    try {
-      const userKey =
-        p === "google" ? userKeys?.gemini : p === "groq" ? userKeys?.groq : userKeys?.github
-      const res = await fetch(`/api/${p}/models`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userKey: userKey ?? "" }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
-      const ids = (data.models as Array<{ id: string }>).map((m) => m.id)
-      setDiscovered((prev) => ({ ...prev, [p]: ids }))
-    } catch (err) {
-      setDiscoverError((prev) => ({ ...prev, [p]: err instanceof Error ? err.message : String(err) }))
-    } finally {
-      setDiscovering(null)
-    }
+  function handleDiscover(p: ProviderKey) {
+    const userKey =
+      p === "google" ? userKeys?.gemini : p === "groq" ? userKeys?.groq : userKeys?.github
+    void discoverModels(p, userKey)
   }
 
   const trigger = (
@@ -148,21 +132,56 @@ export function ModelPicker({
               {modelList.map((m) => {
                 const selected = pKey === provider && m === model
                 const onlyByModel = !provider && m === model
+                const limit = getModelLimit(pTyped, m)
+                const used = ModelStore.getUsage(pTyped, m)
+                const remaining = limit.rpd === null ? null : Math.max(0, limit.rpd - used)
+                const lowQuota = remaining !== null && remaining <= 5
+                const exhausted = remaining !== null && remaining === 0
+                const badgeTitle =
+                  limit.rpd === null
+                    ? `${limit.note ?? "Không giới hạn"} — đã dùng hôm nay: ${used}`
+                    : `Còn ${remaining}/${limit.rpd} req hôm nay (đã dùng ${used})`
                 return (
                   <DropdownMenuItem
                     key={m}
                     onClick={() => onChange(pTyped, m)}
-                    className={cn("font-mono text-xs", (selected || onlyByModel) && "bg-accent")}
+                    className={cn(
+                      "font-mono text-xs",
+                      (selected || onlyByModel) && "bg-accent",
+                      exhausted && "opacity-60",
+                    )}
                   >
                     <span className="flex-1 break-all">{m}</span>
-                    {(selected || onlyByModel) && <Check className="h-3 w-3 shrink-0" />}
+                    <span
+                      title={badgeTitle}
+                      className={cn(
+                        "ml-2 inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-sans tabular-nums",
+                        limit.rpd === null
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : exhausted
+                          ? "border-destructive/40 bg-destructive/10 text-destructive"
+                          : lowQuota
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : "border-border/60 bg-muted/40 text-muted-foreground",
+                      )}
+                    >
+                      {limit.rpd === null ? (
+                        <InfinityIcon className="h-3 w-3" aria-label="Không giới hạn" />
+                      ) : (
+                        <>
+                          <span>{remaining}</span>
+                          <span className="opacity-60">/{limit.rpd}</span>
+                        </>
+                      )}
+                    </span>
+                    {(selected || onlyByModel) && <Check className="ml-1 h-3 w-3 shrink-0" />}
                   </DropdownMenuItem>
                 )
               })}
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault()
-                  discoverModels(pTyped)
+                  handleDiscover(pTyped)
                 }}
                 className="text-[11px] text-muted-foreground"
                 disabled={isDiscovering}
