@@ -7,6 +7,8 @@ import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
 import { compactMessagesIfNeeded } from "@/lib/compactor"
 import { selfCritiqueResponse, shouldSelfCritique } from "@/lib/critique"
+import { recordProviderRateLimit } from "@/lib/usage-tracker"
+import { parseRateLimitHeaders } from "@/lib/rate-limit-headers"
 
 export const runtime = "edge"
 export const maxDuration = 30
@@ -93,8 +95,15 @@ export async function POST(req: Request) {
       onError({ error }) {
         console.error("[chat-sse] streamText error:", error)
       },
-      onFinish({ finishReason, usage }) {
+      onFinish({ finishReason, usage, response }) {
         console.log("[chat-sse] streamText finish:", { finishReason, usage })
+        try {
+          const headers = (response as { headers?: Headers | Record<string, string> } | undefined)?.headers
+          const info = parseRateLimitHeaders(p, headers)
+          if (info) void recordProviderRateLimit(p, m, info).catch(() => {})
+        } catch {
+          /* ignore */
+        }
       },
     })
 

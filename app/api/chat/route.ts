@@ -7,6 +7,8 @@ import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import { routeModel } from "@/lib/router"
 import { compactMessagesIfNeeded } from "@/lib/compactor"
 import { selfCritiqueResponse, shouldSelfCritique } from "@/lib/critique"
+import { recordProviderRateLimit } from "@/lib/usage-tracker"
+import { parseRateLimitHeaders } from "@/lib/rate-limit-headers"
 import type { UserKeys } from "@/lib/user-keys"
 
 export const runtime = "edge"
@@ -92,8 +94,19 @@ export async function POST(req: Request) {
         // surface model/SDK errors to server logs so they're not silently swallowed
         console.error("[chat] streamText error:", error)
       },
-      onFinish({ finishReason, usage }) {
+      onFinish({ finishReason, usage, response }) {
         console.log("[chat] streamText finish:", { finishReason, usage })
+        // Read REAL rate-limit info from provider response headers (Groq + GitHub).
+        // Google Gemini doesn't expose these headers → returns null, no-op.
+        try {
+          const headers = (response as { headers?: Headers | Record<string, string> } | undefined)?.headers
+          const info = parseRateLimitHeaders(p, headers)
+          if (info) {
+            void recordProviderRateLimit(p, m, info, userKeys).catch(() => {})
+          }
+        } catch {
+          /* never let telemetry errors propagate */
+        }
       },
     })
     const headers = {

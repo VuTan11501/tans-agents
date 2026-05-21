@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from "react"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
+import type { RateLimitInfo } from "@/lib/rate-limit-headers"
+import type { UserKeys } from "@/lib/user-keys"
 
 /**
  * Module-level shared store for ModelPicker:
@@ -18,8 +20,14 @@ type State = {
   discovered: Partial<Record<ProviderKey, string[]>>
   discovering: ProviderKey | null
   discoverError: Partial<Record<ProviderKey, string>>
-  /** Map<"<provider>:<model>:<YYYY-MM-DD>", count> */
+  /** Map<"<provider>:<model>:<YYYY-MM-DD>", count> — local fallback estimate. */
   usage: Record<string, number>
+  /** Map<"<provider>:<model>", RateLimitInfo> — REAL data from provider headers (Groq + GitHub). */
+  serverLimits: Record<string, RateLimitInfo>
+  /** True once /api/usage responded successfully at least once (Upstash configured). */
+  serverLimitsAvailable: boolean
+  /** True while a /api/usage refresh is in flight. */
+  serverLimitsRefreshing: boolean
   /** ms timestamp — bumped on any change so React snapshot equality works. */
   rev: number
 }
@@ -81,6 +89,9 @@ let state: State = {
   discovering: null,
   discoverError: {},
   usage: typeof window !== "undefined" ? loadUsage() : {},
+  serverLimits: {},
+  serverLimitsAvailable: false,
+  serverLimitsRefreshing: false,
   rev: 0,
 }
 
@@ -152,8 +163,33 @@ export const ModelStore = {
   getDiscovered(p: ProviderKey): string[] | undefined {
     return state.discovered[p]
   },
-  getUsage(provider: ProviderKey, model: string): number {
-    return state.usage[usageKey(provider, model)] ?? 0
+  /**
+   * Read effective usage for a model.
+   *  - "provider": real header data → returns {used, limit, remaining, source:"provider", resetSeconds}
+   *  - "local":    local counter estimate → {used, source:"local"} (no limit known here)
+   */
+  getUsage(provider: ProviderKey, model: string):
+    | { source: "provider"; used: number; remaining: number; limit: number; resetSeconds?: number }
+    | { source: "local"; used: number } {
+    const pmKey = `${provider}:${model}`
+    const info = state.serverLimits[pmKey]
+    if (state.serverLimitsAvailable && info) {
+      const used = Math.max(0, info.limit - info.remaining)
+      return { source: "provider", used, remaining: info.remaining, limit: info.limit, resetSeconds: info.resetSeconds }
+    }
+    return { source: "local", used: state.usage[usageKey(provider, model)] ?? 0 }
+  },
+  setServerLimits(limits: Record<string, RateLimitInfo>) {
+    state.serverLimits = limits
+    state.serverLimitsAvailable = true
+    notify()
+  },
+  markServerLimitsUnavailable() {
+    if (state.serverLimitsAvailable || state.serverLimits && Object.keys(state.serverLimits).length) {
+      state.serverLimits = {}
+      state.serverLimitsAvailable = false
+      notify()
+    }
   },
   incrementUsage(provider: ProviderKey, model: string) {
     const k = usageKey(provider, model)
@@ -229,4 +265,49 @@ export async function discoverModels(
 
   inflight.set(provider, run)
   return run
+}
+
+/**
+ * Refresh real provider rate-limit data from /api/usage. Dedupes concurrent calls.
+ * - If Upstash isn't configured (503), marks as unavailable (badge falls back to local).
+ * - On success, replaces serverLimits map with the latest snapshot.
+ */
+let refreshLimitsInflight: Promise<void> | null = null
+
+export async function refreshServerLimits(
+  userKeys: UserKeys | undefined,
+  items: Array<{ provider: ProviderKey; model: string }>,
+): Promise<void> {
+  if (refreshLimitsInflight) return refreshLimitsInflight
+  if (typeof window === "undefined") return
+  if (items.length === 0) return
+
+  state.serverLimitsRefreshing = true
+  notify()
+
+  refreshLimitsInflight = (async () => {
+    try {
+      const res = await fetch("/api/usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userKeys, items }),
+      })
+      if (res.status === 503) {
+        ModelStore.markServerLimitsUnavailable()
+        return
+      }
+      if (!res.ok) return
+      const data = (await res.json()) as { limits?: Record<string, RateLimitInfo> }
+      if (data?.limits && typeof data.limits === "object") {
+        ModelStore.setServerLimits(data.limits)
+      }
+    } catch {
+      /* network error — keep prior state */
+    } finally {
+      state.serverLimitsRefreshing = false
+      notify()
+      refreshLimitsInflight = null
+    }
+  })()
+  return refreshLimitsInflight
 }

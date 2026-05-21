@@ -13,7 +13,7 @@ import {
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { UserKeys } from "@/lib/user-keys"
 import { cn } from "@/lib/utils"
-import { ModelStore, useModelStore, discoverModels } from "@/lib/model-store"
+import { ModelStore, useModelStore, discoverModels, refreshServerLimits } from "@/lib/model-store"
 import { getModelLimit } from "@/lib/rate-limits"
 
 interface ModelPickerProps {
@@ -64,6 +64,24 @@ export function ModelPicker({
     const userKey =
       p === "google" ? userKeys?.gemini : p === "groq" ? userKeys?.groq : userKeys?.github
     void discoverModels(p, userKey)
+  }
+
+  /** Build full list of all (provider, model) tuples currently displayed in the dropdown. */
+  function collectAllItems(): Array<{ provider: ProviderKey; model: string }> {
+    const out: Array<{ provider: ProviderKey; model: string }> = []
+    for (const [pKey, p] of Object.entries(PROVIDERS) as Array<[ProviderKey, (typeof PROVIDERS)[ProviderKey]]>) {
+      const discoveredIds = discovered[pKey]
+      const list = discoveredIds && discoveredIds.length > 0
+        ? Array.from(new Set([...p.models, ...discoveredIds]))
+        : p.models
+      for (const m of list) out.push({ provider: pKey, model: m })
+    }
+    return out
+  }
+
+  function handleOpenChange(open: boolean) {
+    if (!open) return
+    void refreshServerLimits(userKeys, collectAllItems())
   }
 
   const trigger = (
@@ -132,15 +150,31 @@ export function ModelPicker({
               {modelList.map((m) => {
                 const selected = pKey === provider && m === model
                 const onlyByModel = !provider && m === model
-                const limit = getModelLimit(pTyped, m)
-                const used = ModelStore.getUsage(pTyped, m)
-                const remaining = limit.rpd === null ? null : Math.max(0, limit.rpd - used)
-                const lowQuota = remaining !== null && limit.rpd !== null && remaining <= Math.max(3, limit.rpd * 0.05)
+                const fallbackLimit = getModelLimit(pTyped, m)
+                const usage = ModelStore.getUsage(pTyped, m)
+                const isProviderData = usage.source === "provider"
+                // Effective limit: real provider one if available, else our static table.
+                const effectiveLimit: number | null = isProviderData
+                  ? usage.limit
+                  : fallbackLimit.rpd
+                const used = usage.used
+                const remaining = effectiveLimit === null
+                  ? null
+                  : isProviderData
+                  ? usage.remaining
+                  : Math.max(0, effectiveLimit - used)
+                const lowQuota =
+                  remaining !== null &&
+                  effectiveLimit !== null &&
+                  remaining <= Math.max(3, effectiveLimit * 0.05)
                 const exhausted = remaining !== null && remaining === 0
+                const sourceLabel = isProviderData
+                  ? "✓ Số liệu thật từ provider (đồng bộ qua tất cả thiết bị)"
+                  : "Ước tính cục bộ — chỉ đếm request gửi qua app này từ thiết bị này"
                 const badgeTitle =
-                  limit.rpd === null
-                    ? `${limit.note ?? "Không giới hạn"} — đã gọi qua app: ${used}`
-                    : `Đã dùng ${used}/${limit.rpd} req hôm nay (ước tính cục bộ — chỉ đếm request gửi qua Tan's Agent, provider thực tế có thể khác).`
+                  effectiveLimit === null
+                    ? `${fallbackLimit.note ?? "Không giới hạn"} — đã gọi qua app: ${used}`
+                    : `${used}/${effectiveLimit} req đã dùng (còn ${remaining}). ${sourceLabel}.`
                 return (
                   <DropdownMenuItem
                     key={m}
@@ -155,21 +189,26 @@ export function ModelPicker({
                       title={badgeTitle}
                       className={cn(
                         "ml-2 inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-sans tabular-nums",
-                        limit.rpd === null
+                        effectiveLimit === null
                           ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           : exhausted
                           ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : lowQuota
                           ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : isProviderData
+                          ? "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
                           : "border-border/60 bg-muted/40 text-muted-foreground",
                       )}
                     >
-                      {limit.rpd === null ? (
+                      {effectiveLimit === null ? (
                         <InfinityIcon className="h-3 w-3" aria-label="Không giới hạn" />
                       ) : (
                         <>
+                          {isProviderData && (
+                            <span className="mr-0.5 opacity-80" aria-hidden>•</span>
+                          )}
                           <span>{used}</span>
-                          <span className="opacity-60">/{limit.rpd}</span>
+                          <span className="opacity-60">/{effectiveLimit}</span>
                         </>
                       )}
                     </span>
@@ -231,7 +270,7 @@ export function ModelPicker({
     return (
       <div className="space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={handleOpenChange}>
           <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
           {content}
         </DropdownMenu>
@@ -240,7 +279,7 @@ export function ModelPicker({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       {content}
     </DropdownMenu>
