@@ -83,6 +83,12 @@ export async function POST(req: Request) {
         )
       : agentTools
 
+    const hasTools = Object.keys(tools).length > 0
+    const googleProviderOptions =
+      p === "google" && hasTools
+        ? { google: { thinkingConfig: { thinkingBudget: 0, includeThoughts: false } } }
+        : undefined
+
     const result = streamText({
       model: getModel(p, m),
       system:
@@ -92,6 +98,7 @@ export async function POST(req: Request) {
       messages: finalMessages,
       tools,
       maxSteps: 5,
+      ...(googleProviderOptions ? { providerOptions: googleProviderOptions } : {}),
       onError({ error }) {
         console.error("[chat-sse] streamText error:", error)
       },

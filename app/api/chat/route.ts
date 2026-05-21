@@ -84,12 +84,23 @@ export async function POST(req: Request) {
       ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
       : agentTools
     const modelInstance = getModel(p, m, userKeys)
+    // Gemini 2.5 thinking-mode models require a `thought_signature` field on
+    // every echoed function call in conversation history. AI SDK can't preserve
+    // it across multi-step tool calls → "Function call is missing a thought_signature"
+    // on step 2. Disable thinking when tools are enabled to avoid this entirely.
+    // (For pure text generation thinking is fine; toggle here only if tools list is non-empty.)
+    const hasTools = Object.keys(tools).length > 0
+    const googleProviderOptions =
+      p === "google" && hasTools
+        ? { google: { thinkingConfig: { thinkingBudget: 0, includeThoughts: false } } }
+        : undefined
     const result = streamText({
       model: modelInstance,
       system: SYSTEM_PROMPT,
       messages: finalMessages,
       tools,
       maxSteps: 5,
+      ...(googleProviderOptions ? { providerOptions: googleProviderOptions } : {}),
       onError({ error }) {
         // surface model/SDK errors to server logs so they're not silently swallowed
         console.error("[chat] streamText error:", error)
