@@ -261,16 +261,43 @@ export function MessageBubble({
                     rel="noreferrer"
                     className="my-2 block max-w-full overflow-hidden rounded-xl border border-border/60 bg-muted/30"
                   >
-                    <img
-                      {...props}
-                      src={src}
-                      alt={alt ?? ""}
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      className="block h-auto w-full max-w-full"
-                      style={{ aspectRatio: "auto" }}
-                    />
+                    <span className="relative block w-full overflow-hidden bg-gradient-to-br from-muted/50 to-muted/20" style={{ minHeight: "12rem" }}>
+                      <span
+                        data-skeleton
+                        aria-hidden
+                        className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
+                      >
+                        <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 shadow-sm backdrop-blur">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+                          Đang tạo ảnh… (15–30s)
+                        </span>
+                      </span>
+                      <img
+                        {...props}
+                        src={src}
+                        alt={alt ?? ""}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        className="relative block h-auto w-full max-w-full animate-in fade-in duration-500"
+                        onLoad={(e) => {
+                          const img = e.currentTarget as HTMLImageElement
+                          const wrap = img.parentElement
+                          const skel = wrap?.querySelector("[data-skeleton]") as HTMLElement | null
+                          if (skel) skel.style.display = "none"
+                          if (wrap) wrap.style.minHeight = "0"
+                        }}
+                        onError={(e) => {
+                          const img = e.currentTarget as HTMLImageElement
+                          const wrap = img.parentElement
+                          const skel = wrap?.querySelector("[data-skeleton] > span") as HTMLElement | null
+                          if (skel) {
+                            skel.innerHTML = "⚠ Không tải được ảnh — bấm để mở thẳng"
+                            skel.className = "inline-flex items-center gap-2 rounded-full bg-destructive/10 px-3 py-1.5 text-destructive shadow-sm"
+                          }
+                        }}
+                      />
+                    </span>
                     {alt && (
                       <span className="block truncate border-t border-border/40 bg-background/40 px-3 py-1.5 text-[11px] text-muted-foreground">
                         {alt}

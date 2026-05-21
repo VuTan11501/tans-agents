@@ -361,8 +361,9 @@ export const fetchUrl = tool({
 export const generateImage = tool({
   description:
     "Create an image URL from a prompt with Pollinations.ai. Use for image generation requests. " +
-    "After the tool returns successfully, reply with the markdown field exactly as-is (the ![alt](url) string) " +
-    "and a 1-2 sentence caption — DO NOT call this tool again, DO NOT call any other tool, just render the markdown.",
+    "After the tool returns, reply with the markdown field exactly as-is (the ![alt](url) string) " +
+    "and a 1-2 sentence caption — DO NOT call this tool again, DO NOT call any other tool, just render the markdown. " +
+    "Note: the image renders on-demand server-side (15-30s on first load), the user's browser will show a loading state.",
   parameters: z.object({
     prompt: z.string().describe("Image prompt (English works best)"),
     width: z.number().int().min(64).max(2048).optional().default(1024),
@@ -370,46 +371,13 @@ export const generateImage = tool({
   }),
   execute: async ({ prompt, width, height }) => {
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true`
-    // Pre-warm the Pollinations cache so the image is actually ready by the time
-    // the user's <img> tag tries to fetch it. Pollinations renders on-demand —
-    // first request can take 15–30s. Doing a HEAD (with 12s timeout) here means:
-    //  1. We surface a tool error if Pollinations is down (instead of a broken
-    //     image in the chat bubble).
-    //  2. By the time the model finishes its reply and the markdown is rendered,
-    //     the URL is cached and loads instantly.
-    try {
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 12_000)
-      const res = await fetch(url, { method: "GET", signal: ctrl.signal })
-      clearTimeout(timer)
-      if (!res.ok) {
-        return { error: `Pollinations trả về HTTP ${res.status}. Thử prompt khác.` }
-      }
-      // Drain the body to fully prime the cache, but cap at 1MB to be safe.
-      try {
-        const reader = res.body?.getReader()
-        if (reader) {
-          let total = 0
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            total += value?.byteLength ?? 0
-            if (total > 1_000_000) {
-              await reader.cancel()
-              break
-            }
-          }
-        }
-      } catch {
-        /* drain failure is fine, image is still cached */
-      }
-      return { url, markdown: `![${prompt}](${url})` }
-    } catch (e: unknown) {
-      const msg = errorMessage(e, "image generation failed")
-      // Even on warmup failure, the URL itself works for display — return it
-      // with a soft note so the model still shows the image.
-      return { url, markdown: `![${prompt}](${url})`, warning: `Pre-warm failed: ${msg}` }
-    }
+    // NOTE: We intentionally DO NOT pre-warm the URL here.
+    // Pre-warming inside execute() blocks the streaming connection between us and
+    // the LLM provider for up to ~30s while Pollinations renders. iOS Safari (and
+    // Vercel edge) treat that idle SSE as dead → "Load failed" in the chat UI.
+    // The user's browser will fetch the image lazily once the markdown is rendered;
+    // the custom <img> component shows a loading state until ready.
+    return { url, markdown: `![${prompt}](${url})` }
   },
 })
 
