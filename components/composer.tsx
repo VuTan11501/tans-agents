@@ -18,6 +18,7 @@ import { searchActiveCollection } from "@/lib/collections"
 import { countTokens } from "@/lib/tokens"
 import { useSpeechRecognition } from "@/hooks/use-voice"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 type QuoteEventDetail = {
   text?: string
@@ -571,8 +572,22 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
         </div>
       </div>
       <div className="mt-1.5 flex items-center justify-end gap-1 px-2 text-[10px] text-muted-foreground">
-        <AiFeatureToggle storageKey="tans:self-critique" label="Tự đánh giá câu trả lời" icon={<Brain className="h-3.5 w-3.5" />} />
-        <AiFeatureToggle storageKey="tans:auto-compact" label="Tự nén context khi đầy" icon={<FolderArchive className="h-3.5 w-3.5" />} />
+        <AiFeatureToggle
+          storageKey="tans:self-critique"
+          label="Tự đánh giá câu trả lời"
+          icon={<Brain className="h-3.5 w-3.5" />}
+          defaultEnabled
+          onMessage="AI sẽ tự kiểm tra câu trả lời trước khi trả về để giảm sai sót."
+          offMessage="AI trả lời thẳng, không tự kiểm tra lại."
+        />
+        <AiFeatureToggle
+          storageKey="tans:auto-compact"
+          label="Tự nén context khi đầy"
+          icon={<FolderArchive className="h-3.5 w-3.5" />}
+          defaultEnabled
+          onMessage="Khi context gần đầy, các tin nhắn cũ sẽ được tóm tắt tự động để chừa chỗ cho phần mới."
+          offMessage="Context sẽ không được nén — bạn cần chủ động xóa hoặc tạo chat mới khi đầy."
+        />
         <span className="mx-1 h-3 w-px bg-border/60" aria-hidden />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -616,16 +631,46 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   )
 }
 
-function AiFeatureToggle({ storageKey, label, icon }: { storageKey: string; label: string; icon: React.ReactNode }) {
-  const [enabled, setEnabled] = useState(false)
+function AiFeatureToggle({
+  storageKey,
+  label,
+  icon,
+  defaultEnabled = false,
+  onMessage,
+  offMessage,
+}: {
+  storageKey: string
+  label: string
+  icon: React.ReactNode
+  defaultEnabled?: boolean
+  onMessage?: string
+  offMessage?: string
+}) {
+  const [enabled, setEnabled] = useState(defaultEnabled)
   useEffect(() => {
     if (typeof window === "undefined") return
-    setEnabled(window.localStorage.getItem(storageKey) === "true")
-  }, [storageKey])
+    const raw = window.localStorage.getItem(storageKey)
+    if (raw === null) {
+      // First-time visitor — apply default + persist so it sticks.
+      setEnabled(defaultEnabled)
+      window.localStorage.setItem(storageKey, String(defaultEnabled))
+    } else {
+      setEnabled(raw === "true")
+    }
+  }, [storageKey, defaultEnabled])
   function toggle() {
     const next = !enabled
     setEnabled(next)
     if (typeof window !== "undefined") window.localStorage.setItem(storageKey, String(next))
+    if (next) {
+      toast.success(`${label}: Bật`, {
+        description: onMessage ?? "Đã bật tính năng.",
+      })
+    } else {
+      toast(`${label}: Tắt`, {
+        description: offMessage ?? "Đã tắt tính năng.",
+      })
+    }
   }
   return (
     <Tooltip>

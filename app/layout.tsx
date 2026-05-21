@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth-provider"
 import { PWARegister } from "@/components/pwa-register"
 import { VoiceMode } from "@/components/voice-mode"
+import { Toaster } from "sonner"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TooltipProvider delayDuration={300}>
               {children}
               <VoiceMode />
+              <Toaster position="bottom-center" theme="system" richColors closeButton />
             </TooltipProvider>
           </ThemeProvider>
         </AuthProvider>
