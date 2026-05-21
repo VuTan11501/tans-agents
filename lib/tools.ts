@@ -360,24 +360,71 @@ export const fetchUrl = tool({
 
 export const generateImage = tool({
   description:
-    "Create an image URL from a prompt with Pollinations.ai. Use for image generation requests. " +
-    "After the tool returns, reply with the markdown field exactly as-is (the ![alt](url) string) " +
-    "and a 1-2 sentence caption — DO NOT call this tool again, DO NOT call any other tool, just render the markdown. " +
-    "Note: the image renders on-demand server-side (15-30s on first load), the user's browser will show a loading state.",
+    "Generate an image from a text prompt via Pollinations.ai. " +
+    "IMPORTANT — write the prompt as a detailed ENGLISH description (40+ words) covering: " +
+    "subject, style (photoreal / anime / oil painting / 3D render…), lighting, mood, color palette, " +
+    "camera angle, level of detail. Translate non-English user requests into rich English prompts. " +
+    "Bad: 'cat'. Good: 'A fluffy orange tabby cat sitting on a wooden windowsill, warm afternoon sunlight, " +
+    "soft bokeh background, photorealistic, high detail, shallow depth of field, cozy atmosphere'. " +
+    "After the tool returns, reply with the markdown field exactly as-is (![alt](url)) plus a 1-2 sentence caption — " +
+    "DO NOT call this tool again, DO NOT call any other tool. " +
+    "Note: Pollinations renders on-demand server-side (15-30s on first load); the UI shows a loading skeleton.",
   parameters: z.object({
-    prompt: z.string().describe("Image prompt (English works best)"),
+    prompt: z.string().describe("DETAILED English description (40+ words). Translate non-English requests."),
     width: z.number().int().min(64).max(2048).optional().default(1024),
     height: z.number().int().min(64).max(2048).optional().default(1024),
   }),
   execute: async ({ prompt, width, height }) => {
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true`
-    // NOTE: We intentionally DO NOT pre-warm the URL here.
-    // Pre-warming inside execute() blocks the streaming connection between us and
-    // the LLM provider for up to ~30s while Pollinations renders. iOS Safari (and
-    // Vercel edge) treat that idle SSE as dead → "Load failed" in the chat UI.
-    // The user's browser will fetch the image lazily once the markdown is rendered;
-    // the custom <img> component shows a loading state until ready.
-    return { url, markdown: `![${prompt}](${url})` }
+    // Server-side prompt enhancement fallback: if the model passed a tiny / non-English prompt,
+    // expand it via Groq llama-3.1-8b-instant (free, ~500ms) so the user still gets a quality image.
+    let finalPrompt = prompt.trim()
+    const hasNonAscii = /[^\x00-\x7F]/.test(finalPrompt)
+    const tooShort = finalPrompt.split(/\s+/).filter(Boolean).length < 6
+    if ((hasNonAscii || tooShort) && process.env.GROQ_API_KEY) {
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 6_000)
+        const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          signal: ctrl.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.1-8b-instant",
+            temperature: 0.7,
+            max_tokens: 180,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Rewrite the user's image idea as ONE detailed English image-generation prompt (40-70 words). " +
+                  "Include: subject, style (photoreal/anime/3D/oil…), lighting, mood, composition, detail level. " +
+                  "No preamble. No quotes. Just the prompt.",
+              },
+              { role: "user", content: finalPrompt },
+            ],
+          }),
+        })
+        clearTimeout(timer)
+        if (r.ok) {
+          const data = await r.json()
+          const enhanced = data?.choices?.[0]?.message?.content?.trim()
+          if (typeof enhanced === "string" && enhanced.length > finalPrompt.length) {
+            finalPrompt = enhanced.replace(/^["'`]|["'`]$/g, "")
+          }
+        }
+      } catch {
+        /* enhancement is best-effort; fall back to original prompt */
+      }
+    }
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${width}&height=${height}&nologo=true`
+    return {
+      url,
+      markdown: `![${finalPrompt.slice(0, 120)}](${url})`,
+      ...(finalPrompt !== prompt.trim() ? { enhancedPrompt: finalPrompt } : {}),
+    }
   },
 })
 
