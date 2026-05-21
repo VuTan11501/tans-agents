@@ -15,7 +15,7 @@ export const maxDuration = 30
 
 const DEFAULT_SYSTEM_PROMPT =
   "Bạn là Tan's Agent - AI assistant hữu ích, trả lời súc tích bằng tiếng Việt (trừ khi user dùng ngôn ngữ khác). " +
-  "Khi cần thông tin thực tế hãy dùng tool webSearch. Khi cần tính toán dùng calculator. Khi hỏi giờ dùng currentTime. " +
+  "Khi cần thông tin thực tế hãy dùng tool webSearch. Khi cần tính toán dùng calculator. Khi hỏi giờ ở bất kỳ thành phố/múi giờ nào hãy gọi currentTime với tham số timezone (vd 'Asia/Tokyo', 'America/New_York'). " +
   "Format câu trả lời bằng Markdown khi hữu ích (list, code block, bold)."
 
 function providerForModel(modelId: string): ProviderKey | undefined {

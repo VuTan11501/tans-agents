@@ -2,11 +2,32 @@ import { tool } from "ai"
 import { z } from "zod"
 
 export const currentTime = tool({
-  description: "Get the current date and time in ISO format. Use when user asks about time/date.",
-  parameters: z.object({}),
-  execute: async () => {
+  description:
+    "Get the current date and time. Optionally pass an IANA timezone (e.g. 'Asia/Tokyo', 'America/New_York') or BCP-47 locale to format the output. Use when user asks about time/date in any city.",
+  parameters: z.object({
+    timezone: z
+      .string()
+      .optional()
+      .describe("IANA timezone like 'Asia/Tokyo', 'America/New_York', 'Europe/London'. Omit for UTC."),
+    locale: z.string().optional().describe("BCP-47 locale like 'vi-VN', 'en-US'. Default 'en-US'."),
+  }),
+  execute: async (args) => {
     try {
-      return { now: new Date().toISOString() }
+      const { timezone, locale } = args ?? {}
+      const now = new Date()
+      const tz = timezone || "UTC"
+      const loc = locale || "en-US"
+      let formatted: string
+      try {
+        formatted = new Intl.DateTimeFormat(loc, {
+          timeZone: tz,
+          dateStyle: "full",
+          timeStyle: "long",
+        }).format(now)
+      } catch {
+        formatted = now.toISOString()
+      }
+      return { iso: now.toISOString(), timezone: tz, locale: loc, formatted }
     } catch (e: unknown) {
       return { error: errorMessage(e, "time failed") }
     }
