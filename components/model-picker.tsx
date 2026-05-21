@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, ChevronDown, Infinity as InfinityIcon } from "lucide-react"
+import { Check, ChevronDown, Infinity as InfinityIcon, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -180,16 +180,31 @@ export function ModelPicker({
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault()
+                  if (isDiscovering) return
                   handleDiscover(pTyped)
                 }}
-                className="text-[11px] text-muted-foreground"
                 disabled={isDiscovering}
+                aria-busy={isDiscovering}
+                className={cn(
+                  "gap-2 text-[11px] text-muted-foreground",
+                  isDiscovering && "pointer-events-none cursor-not-allowed opacity-70",
+                )}
               >
-                {isDiscovering
-                  ? "Đang quét..."
-                  : discoveredIds
-                  ? `↻ Quét lại (${discoveredIds.length} model)`
-                  : "↻ Quét live model có sẵn với key của bạn"}
+                {isDiscovering ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    <span>Đang quét {PROVIDERS[pTyped].label}...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" aria-hidden />
+                    <span>
+                      {discoveredIds
+                        ? `Quét lại (${discoveredIds.length} model)`
+                        : "Quét live model có sẵn với key của bạn"}
+                    </span>
+                  </>
+                )}
               </DropdownMenuItem>
               {errMsg && (
                 <div className="px-2 py-1 text-[10px] text-destructive break-words [overflow-wrap:anywhere]">
