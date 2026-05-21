@@ -70,13 +70,17 @@ export function ToolCall({ name, state, args, result }: ToolCallProps) {
   }
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className={cn("min-w-0 max-w-full", open && "basis-full")}
+    >
       <CollapsibleTrigger
         className={cn(
-          "group inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-1.5 text-xs font-medium transition-all hover:border-border hover:bg-muted/50"
+          "group inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-1.5 text-xs font-medium transition-all hover:border-border hover:bg-muted/50"
         )}
       >
-        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-background/50">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-background/50">
           {isStreaming ? (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           ) : hasError ? (
@@ -87,24 +91,24 @@ export function ToolCall({ name, state, args, result }: ToolCallProps) {
             <Wrench className="h-3 w-3 text-muted-foreground" />
           )}
         </span>
-        <span className="font-mono text-foreground/80">{label}</span>
-        <ChevronRight className={cn("h-3 w-3 text-muted-foreground transition-transform", open && "rotate-90")} />
+        <span className="truncate font-mono text-foreground/80">{label}</span>
+        <ChevronRight className={cn("h-3 w-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-1 data-[state=open]:slide-in-from-top-1">
-        <div className="mt-2 space-y-2 rounded-lg border border-border/60 bg-card/40 p-3 text-xs">
+        <div className="mt-2 w-full min-w-0 max-w-full space-y-2 overflow-hidden rounded-lg border border-border/60 bg-card/40 p-3 text-xs">
           {args && Object.keys(args).length > 0 && (
-            <div>
+            <div className="min-w-0 max-w-full">
               <div className="mb-1 font-semibold uppercase tracking-wide text-muted-foreground">Input</div>
-              <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 font-mono">{JSON.stringify(args, null, 2)}</pre>
+              <pre className="max-w-full overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 font-mono text-[11px] [overflow-wrap:anywhere]">{JSON.stringify(args, null, 2)}</pre>
             </div>
           )}
           {isDone && (
-            <div>
+            <div className="min-w-0 max-w-full">
               <div className="mb-1 font-semibold uppercase tracking-wide text-muted-foreground">
                 {hasError ? "Error" : "Output"}
               </div>
               <pre className={cn(
-                "overflow-x-auto rounded-md bg-muted/40 p-2 font-mono",
+                "max-w-full overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 font-mono text-[11px] [overflow-wrap:anywhere]",
                 hasError && "text-destructive"
               )}>
                 {typeof parsedResult === "string" ? parsedResult : JSON.stringify(parsedResult, null, 2)}

@@ -230,7 +230,7 @@ export function MessageBubble({
         )}
 
         {toolInvocations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex w-full min-w-0 max-w-full flex-wrap gap-1.5">
             {toolInvocations.map((p, i) => (
               <ToolCall
                 key={i}
@@ -254,6 +254,30 @@ export function MessageBubble({
               rehypePlugins={[rehypeKatex]}
               components={{
                 pre: (props: any) => <CodeBlock {...props} />,
+                img: ({ alt, src, ...props }: any) => (
+                  <a
+                    href={src}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="my-2 block max-w-full overflow-hidden rounded-xl border border-border/60 bg-muted/30"
+                  >
+                    <img
+                      {...props}
+                      src={src}
+                      alt={alt ?? ""}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="block h-auto w-full max-w-full"
+                      style={{ aspectRatio: "auto" }}
+                    />
+                    {alt && (
+                      <span className="block truncate border-t border-border/40 bg-background/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+                        {alt}
+                      </span>
+                    )}
+                  </a>
+                ),
                 p: ({ children, ...props }: any) => <p {...props}>{linkCitationMarkers(children, citationSources)}</p>,
                 li: ({ children, ...props }: any) => <li {...props}>{linkCitationMarkers(children, citationSources)}</li>,
                 blockquote: ({ children, ...props }: any) => <blockquote {...props}>{linkCitationMarkers(children, citationSources)}</blockquote>,
