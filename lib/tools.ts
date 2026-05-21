@@ -161,7 +161,7 @@ function weatherDescription(code: number): string {
 }
 
 export const webSearch = tool({
-  description: "Search current web results. Uses Brave when configured, otherwise DuckDuckGo (HTML + Lite fallback).",
+  description: "Search current web results. Tries Brave/Tavily/Serper (when configured) → Jina (free, no key) → DuckDuckGo → Wikipedia.",
   parameters: z.object({ query: z.string().describe("Search query") }),
   execute: async ({ query }) => {
     try {
@@ -184,6 +184,49 @@ export const webSearch = tool({
         } catch {}
       }
 
+      const tavilyKey = process.env.TAVILY_API_KEY
+      if (tavilyKey) {
+        try {
+          const r = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: tavilyKey, query, max_results: 5, search_depth: "basic" }),
+          })
+          if (r.ok) {
+            const data = await r.json()
+            const results: SearchResult[] = (data.results ?? []).slice(0, 5).map((it: any) => ({
+              title: it.title ?? "",
+              url: it.url ?? "",
+              snippet: it.content ?? "",
+            }))
+            if (results.length > 0) return { source: "tavily", results }
+          }
+        } catch {}
+      }
+
+      const serperKey = process.env.SERPER_API_KEY
+      if (serperKey) {
+        try {
+          const r = await fetch("https://google.serper.dev/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-KEY": serperKey },
+            body: JSON.stringify({ q: query, num: 5 }),
+          })
+          if (r.ok) {
+            const data = await r.json()
+            const results: SearchResult[] = (data.organic ?? []).slice(0, 5).map((it: any) => ({
+              title: it.title ?? "",
+              url: it.link ?? "",
+              snippet: it.snippet ?? "",
+            }))
+            if (results.length > 0) return { source: "serper", results }
+          }
+        } catch {}
+      }
+
+      const jina = await tryJinaSearch(query)
+      if (jina.length > 0) return { source: "jina", results: jina }
+
       const ddgHtml = await tryDdgHtml(query)
       if (ddgHtml.length > 0) return { source: "ddg-html", results: ddgHtml }
 
@@ -191,14 +234,34 @@ export const webSearch = tool({
       if (ddgLite.length > 0) return { source: "ddg-lite", results: ddgLite }
 
       const wiki = await tryWikipediaSearch(query)
-      if (wiki.length > 0) return { source: "wikipedia-fallback", results: wiki, note: "DuckDuckGo bị chặn, dùng Wikipedia." }
+      if (wiki.length > 0) return { source: "wikipedia-fallback", results: wiki, note: "Các search provider đều fail, dùng Wikipedia." }
 
-      return { source: "ddg", results: [], note: "Không tìm thấy kết quả (search provider có thể đang bị rate-limit)." }
+      return { source: "none", results: [], note: "Không tìm thấy kết quả (mọi provider đều fail hoặc rate-limit)." }
     } catch (e: unknown) {
       return { error: errorMessage(e, "search failed") }
     }
   },
 })
+
+async function tryJinaSearch(query: string): Promise<SearchResult[]> {
+  try {
+    const headers: Record<string, string> = { Accept: "application/json", "X-Respond-With": "no-content" }
+    const jinaKey = process.env.JINA_API_KEY
+    if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`
+    const r = await fetch(`https://s.jina.ai/?q=${encodeURIComponent(query)}`, { headers })
+    if (!r.ok) return []
+    const data = await r.json().catch(() => null) as any
+    const items = (data?.data ?? []) as any[]
+    if (!Array.isArray(items)) return []
+    return items.slice(0, 5).map((it: any) => ({
+      title: String(it.title ?? "").trim(),
+      url: String(it.url ?? "").trim(),
+      snippet: String(it.description ?? it.content ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
+    })).filter((x) => x.url && x.title)
+  } catch {
+    return []
+  }
+}
 
 async function tryDdgHtml(query: string): Promise<SearchResult[]> {
   try {
