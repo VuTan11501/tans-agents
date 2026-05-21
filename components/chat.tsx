@@ -81,7 +81,18 @@ export function Chat() {
   const [errorLogOpen, setErrorLogOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null)
-  const [sessionId, setSessionId] = useState<string>(() => newId())
+  const [sessionId, setSessionId] = useState<string>(() => {
+    // Restore the last active session id so a reload mid-chat doesn't lose context.
+    if (typeof window !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem("tans-agents:active-session-id")
+        if (saved && saved.trim()) return saved
+      } catch {
+        /* ignore quota / privacy errors */
+      }
+    }
+    return newId()
+  })
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -256,6 +267,42 @@ export function Chat() {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, sessionId, provider, model, persona])
+
+  // Remember the active sessionId so a reload restores the same conversation.
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return
+    try {
+      window.localStorage.setItem("tans-agents:active-session-id", sessionId)
+    } catch {
+      /* ignore */
+    }
+  }, [sessionId])
+
+  // On first load (when localStorage history finishes hydrating), if the
+  // restored active sessionId points at a saved session, replay its messages
+  // into useChat. Guard with a ref so we only do it once per mount and never
+  // overwrite a freshly-started conversation.
+  const hydratedFromHistoryRef = useRef(false)
+  useEffect(() => {
+    if (hydratedFromHistoryRef.current) return
+    if (history.sessions.length === 0) return
+    // useChat may already have messages if the user typed something within
+    // the first paint cycle — never blow that away.
+    if (messages.length > 0) {
+      hydratedFromHistoryRef.current = true
+      return
+    }
+    const saved = history.sessions.find((s) => s.id === sessionId)
+    if (saved && Array.isArray(saved.messages) && saved.messages.length > 0) {
+      skipNextPersistRef.current = true
+      setMessages(saved.messages as any)
+      if (saved.provider) setProvider(saved.provider as ProviderKey)
+      if (saved.model) setModel(saved.model)
+      if ((saved as any).persona) setPersona((saved as any).persona as PersonaId)
+    }
+    hydratedFromHistoryRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.sessions])
 
   // Auto-scroll: chỉ tự cuộn khi user đang ở gần đáy (stickToBottom).
   // Nếu user cuộn lên đọc nội dung cũ giữa lúc streaming → KHÔNG kéo họ xuống.
