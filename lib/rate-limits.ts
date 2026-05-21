@@ -6,6 +6,15 @@ import type { ProviderKey } from "@/lib/providers"
  *
  * `rpd: null` = effectively unlimited (no daily cap, only per-minute throttle).
  * Order matters — first match wins.
+ *
+ * Sources:
+ *  - Google AI Studio rate-limit page (https://aistudio.google.com/rate-limit) — dynamic per account
+ *  - Groq console docs (https://console.groq.com/docs/rate-limits)
+ *  - GitHub Models docs (free tier ~50 req/day Low, ~150 req/day mini)
+ *
+ * NOTE: Google không expose rate-limit qua response headers → bảng này là nguồn duy nhất
+ * cho Google models. Groq + GitHub có headers thật, sẽ override bảng này khi user gọi
+ * (xem lib/usage-tracker.ts + lib/rate-limit-headers.ts).
  */
 type LimitRule = {
   match: RegExp
@@ -17,14 +26,16 @@ type LimitRule = {
 
 const RULES: Record<ProviderKey, LimitRule[]> = {
   google: [
-    { match: /gemini-2\.5-pro/i, rpd: 100, note: "Free tier: 100 req/day" },
-    { match: /gemini-2\.5-flash-lite/i, rpd: 1000, note: "Free tier: 1000 req/day" },
-    { match: /gemini-2\.5-flash/i, rpd: 250, note: "Free tier: 250 req/day" },
-    { match: /gemini-2\.0-flash-lite/i, rpd: 200, note: "Free tier: 200 req/day" },
-    { match: /gemini-2\.0-flash/i, rpd: 200, note: "Free tier: 200 req/day" },
-    { match: /gemini-flash-lite-latest/i, rpd: 1000 },
-    { match: /gemini-flash-latest/i, rpd: 250 },
-    { match: /gemma-/i, rpd: 14400, note: "Gemma free tier: 14,400 req/day" },
+    { match: /gemini-2\.5-pro/i, rpd: 100, note: "Free tier: 100 req/ngày (5 RPM)" },
+    { match: /gemini-2\.5-flash-lite/i, rpd: 1000, note: "Free tier: 1000 req/ngày (15 RPM)" },
+    { match: /gemini-2\.5-flash/i, rpd: 250, note: "Free tier: 250 req/ngày (10 RPM)" },
+    { match: /gemini-2\.0-flash-lite/i, rpd: 200, note: "Free tier: 200 req/ngày (30 RPM)" },
+    { match: /gemini-2\.0-flash/i, rpd: 200, note: "Free tier: 200 req/ngày (15 RPM)" },
+    { match: /gemini-flash-lite-latest/i, rpd: 1000, note: "Free tier: 1000 req/ngày" },
+    { match: /gemini-flash-latest/i, rpd: 250, note: "Free tier: 250 req/ngày" },
+    // Gemma trên Google AI Studio chỉ giới hạn RPM/TPM, KHÔNG có cap theo ngày (free tier).
+    // Verified từ Google AI Studio rate-limit dashboard (2026-05).
+    { match: /gemma-/i, rpd: null, note: "Gemma free: chỉ giới hạn RPM/TPM, không có cap/ngày" },
     { match: /.*/, rpd: null, note: "Không rõ giới hạn — coi như không cap" },
   ],
   groq: [
