@@ -44,11 +44,14 @@ function AbCard({ label, state, onPick }: { label: string; state: AbPaneState; o
       </CardHeader>
       <CardContent className="min-h-40 p-3">
         {state.error ? (
-          <ScrollArea className="max-h-40 rounded-md border border-destructive/30 bg-destructive/5">
+          <div
+            className="max-h-40 overflow-y-auto overscroll-contain rounded-md border border-destructive/30 bg-destructive/5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-destructive/30"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
             <div className="px-3 py-2 text-xs text-destructive break-words [overflow-wrap:anywhere]">
               {state.error}
             </div>
-          </ScrollArea>
+          </div>
         ) : state.content ? (
           <div className="prose-chat text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{state.content}</ReactMarkdown>

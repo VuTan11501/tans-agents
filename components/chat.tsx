@@ -811,11 +811,14 @@ export function Chat() {
                             <summary className="cursor-pointer text-[11px] opacity-60 hover:opacity-100">
                               Chi tiết kỹ thuật
                             </summary>
-                            <ScrollArea className="mt-1 max-h-40 rounded border border-destructive/20 bg-destructive/5">
+                            <div
+                              className="mt-1 max-h-40 overflow-y-auto overscroll-contain rounded border border-destructive/20 bg-destructive/5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-destructive/30"
+                              style={{ WebkitOverflowScrolling: "touch" }}
+                            >
                               <div className="px-2 py-1 font-mono text-[11px] opacity-80 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {fe.raw}
                               </div>
-                            </ScrollArea>
+                            </div>
                           </details>
                         </div>
                       )
