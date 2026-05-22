@@ -21,6 +21,7 @@ import { ModelPicker } from "@/components/model-picker"
 import { CollectionsDialog } from "@/components/collections-dialog"
 import { SnippetsDialog } from "@/components/snippets-dialog"
 import { ThemeCustomizer } from "@/components/theme-customizer"
+import { LocaleSwitcher } from "@/components/locale-switcher"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -239,6 +240,7 @@ export function Header({
             <TooltipContent side="bottom">Bắt đầu cuộc trò chuyện mới</TooltipContent>
           </Tooltip>
           <ThemeCustomizer open={themeOpen} onOpenChange={setThemeOpen} />
+          <LocaleSwitcher />
         </div>
       </div>
       <CollectionsDialog open={collectionsOpen} onOpenChange={setCollectionsOpen} />
