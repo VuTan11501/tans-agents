@@ -481,6 +481,9 @@ function SessionItem({
         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
       >
         <span className="flex w-full min-w-0 items-center gap-1">
+          {session.parentId && (
+            <span className="shrink-0 text-[10px] text-muted-foreground" title="Cuộc trò chuyện nhánh">🔱</span>
+          )}
           <span className="line-clamp-1 min-w-0 text-sm">{session.title}</span>
           {(session.tags ?? []).slice(0, 2).map((tag) => (
             <span

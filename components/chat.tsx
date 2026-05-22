@@ -567,6 +567,33 @@ export function Chat() {
     [append, currentSession?.enabledTools, currentSession?.tags, history, isLoading, messages, model, persona, provider, sessionId, setInput, setMessages, stop]
   )
 
+  const handleBranchFromMessage = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= messages.length) return
+      if (isLoading) stop()
+      const branchMessages = messages.slice(0, index + 1).map((m) => ({ ...m, id: newId() }))
+      const branchId = newId()
+      history.upsert({
+        id: branchId,
+        title: deriveTitle(branchMessages) + " (nhánh)",
+        messages: branchMessages,
+        provider,
+        model,
+        persona,
+        parentId: sessionId,
+        tags: currentSession?.tags,
+        enabledTools: currentSession?.enabledTools,
+      } as any)
+      skipNextPersistRef.current = true
+      setAttachedFiles([])
+      setPendingFirstMessage(null)
+      setInput("")
+      setSessionId(branchId)
+      setMessages(branchMessages as any)
+    },
+    [currentSession?.enabledTools, currentSession?.tags, history, isLoading, messages, model, persona, provider, sessionId, setInput, setMessages, stop]
+  )
+
   const handleDeleteSession = useCallback(
     (id: string) => {
       history.remove(id)
@@ -858,6 +885,7 @@ export function Chat() {
                       }
                       onRegenerate={() => reload()}
                       onEdit={m.role === "user" ? handleEditMessage : undefined}
+                      onBranch={m.role === "assistant" ? handleBranchFromMessage : undefined}
                     />
                   </div>
                 )

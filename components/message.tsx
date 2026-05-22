@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
-import { Check, Copy, ExternalLink, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
+import { Check, Copy, ExternalLink, GitBranch, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
@@ -26,6 +26,7 @@ interface MessageProps {
   onRegenerate?: () => void
   onEdit?: (index: number, newContent: string) => void
   onContinue?: () => void
+  onBranch?: (index: number) => void
   wasTruncated?: boolean
 }
 
@@ -64,6 +65,7 @@ export function MessageBubble({
   onRegenerate,
   onEdit,
   onContinue,
+  onBranch,
   wasTruncated,
 }: MessageProps) {
   const isUser = role === "user"
@@ -330,6 +332,11 @@ export function MessageBubble({
               {isLastAssistant && onRegenerate && (
                 <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>
                   <RefreshCw className="h-3.5 w-3.5" />
+                </ActionIcon>
+              )}
+              {!isUser && onBranch && (
+                <ActionIcon label="Tạo nhánh từ đây" onClick={() => onBranch(index)}>
+                  <GitBranch className="h-3.5 w-3.5" />
                 </ActionIcon>
               )}
               {showContinue && (
