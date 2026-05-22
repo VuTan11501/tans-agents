@@ -2,9 +2,11 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { CostTrackerCard } from "@/components/cost-tracker-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { clearEvents, getEvents, type Event } from "@/lib/analytics"
+import { clearUsage, getUsage } from "@/lib/usage-log"
 import { getTtftSamples, summarizeByProvider, clearTtft, type ProviderTtftStats } from "@/lib/latency-tracker"
 import { getWinners, modelLeaderboard, clearWinners, type AbWinnerRow, type ModelWinrate } from "@/lib/ab-winner"
 
@@ -16,11 +18,14 @@ export default function StatsPage() {
   const [loaded, setLoaded] = useState(false)
   const [ttftStats, setTtftStats] = useState<ProviderTtftStats[]>([])
   const [winnerRows, setWinnerRows] = useState<AbWinnerRow[]>([])
+  const [usageCount, setUsageCount] = useState(0)
+  const [costRefreshKey, setCostRefreshKey] = useState(0)
 
   useEffect(() => {
     setEvents(getEvents())
     setTtftStats(summarizeByProvider(getTtftSamples()))
     setWinnerRows(getWinners())
+    setUsageCount(getUsage().length)
     setLoaded(true)
   }, [])
 
@@ -109,9 +114,12 @@ export default function StatsPage() {
     clearEvents()
     clearTtft()
     clearWinners()
+    clearUsage()
     setEvents([])
     setTtftStats([])
     setWinnerRows([])
+    setUsageCount(0)
+    setCostRefreshKey((key) => key + 1)
   }
 
   function handleDownload() {
@@ -143,11 +151,13 @@ export default function StatsPage() {
             <Button variant="outline" onClick={handleDownload} disabled={events.length === 0}>
               Tải xuống JSON
             </Button>
-            <Button variant="destructive" onClick={handleClear} disabled={events.length === 0}>
+            <Button variant="destructive" onClick={handleClear} disabled={events.length === 0 && usageCount === 0}>
               Xóa dữ liệu
             </Button>
           </div>
         </header>
+
+        <CostTrackerCard key={costRefreshKey} />
 
         {loaded && events.length === 0 ? (
           <Card>

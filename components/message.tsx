@@ -5,13 +5,14 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
-import { Check, Copy, ExternalLink, GitBranch, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
+import { Check, Copy, GitBranch, Heart, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToolCall } from "@/components/tool-call"
 import { MermaidRenderer } from "@/components/mermaid-renderer"
 import { DiffRenderer } from "@/components/diff-renderer"
 import { ChartRenderer, type ChartData } from "@/components/chart-renderer"
+import { CodeSandboxButton } from "@/components/code-sandbox"
 import { useTypewriter } from "@/hooks/use-typewriter"
 import { trackReaction } from "@/lib/analytics"
 import { cn } from "@/lib/utils"
@@ -435,24 +436,11 @@ function CodeBlock({ children }: any) {
     setTimeout(() => setCopied(false), 1500)
   }
 
-  function openCodeSandbox() {
-    copyCode()
-    window.open("https://codesandbox.io/s/new", "_blank", "noopener,noreferrer")
-  }
-
   return (
     <div className="group/code my-4 overflow-hidden rounded-xl border border-border bg-card text-sm">
       <div className="flex items-center gap-3 border-b border-border bg-muted/30 px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {SANDBOX_LANGUAGES.has(normalizedLanguage) && (
-            <button
-              type="button"
-              onClick={openCodeSandbox}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <ExternalLink className="h-3 w-3" /> Mở trong CodeSandbox
-            </button>
-          )}
+          {SANDBOX_LANGUAGES.has(normalizedLanguage) && <CodeSandboxButton language={normalizedLanguage} code={text} />}
           <button
             type="button"
             onClick={copyCode}

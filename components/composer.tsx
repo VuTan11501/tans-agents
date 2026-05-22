@@ -1,6 +1,7 @@
 "use client"
 import { useRef, useEffect, useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowUp, Brain, Eye, FileText, FolderArchive, Mic, MicOff, Paperclip, Plus, Square, X } from "lucide-react"
+import { ImageGenButton } from "@/components/image-gen-button"
 import { MarkdownPreview } from "@/components/markdown-preview"
 import { RagPicker } from "@/components/rag-picker"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,6 +18,7 @@ import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { searchActiveCollection } from "@/lib/collections"
 import { countTokens } from "@/lib/tokens"
 import { ACCEPTED_FILE_TYPES, filterAcceptedFiles } from "@/lib/dropzone"
+import { parseImageCommand } from "@/lib/image-gen"
 import { createVoiceRecognizer } from "@/lib/voice-input"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -39,6 +41,7 @@ interface ComposerProps {
   model?: string
   files?: File[]
   onFilesChange?: (files: File[]) => void
+  onImageGenerate?: (prompt: string) => Promise<void> | void
 }
 
 const MAX_FILES = 4
@@ -81,7 +84,7 @@ function dataUrlToFile(dataUrl: string, original: File) {
   return new File([bytes], `${baseName}-annotated.png`, { type: mime, lastModified: Date.now() })
 }
 
-export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, messages = [], model, files = [], onFilesChange }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disabled, placeholder, tokenStats, messages = [], model, files = [], onFilesChange, onImageGenerate }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voiceBaseRef = useRef("")
@@ -101,6 +104,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const [markdownPreviewOpen, setMarkdownPreviewOpen] = useState(false)
   const [previewValue, setPreviewValue] = useState(value)
   const [markupIndex, setMarkupIndex] = useState<number | null>(null)
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   useEffect(() => {
     if (typeof window === "undefined") return
     const mq = window.matchMedia("(max-width: 640px)")
@@ -137,7 +141,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const slashMatches = slashOpen && slash ? slash.matches : []
   const showSlash = slashMatches.length > 0
   const composedValue = quotedText ? formatQuotedMessage(quotedText, value) : value
-  const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled && !isRagPrefetching
+  const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled && !isRagPrefetching && !isGeneratingImage
   const contextUsage = useMemo(() => {
     const used = messages.reduce((sum, message) => {
       return sum + countTokens(typeof message.content === "string" ? message.content : "")
@@ -298,6 +302,18 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     addFiles(pastedFiles)
   }
 
+  async function handleImageGenerate(prompt: string) {
+    if (!onImageGenerate || isGeneratingImage) return
+    setIsGeneratingImage(true)
+    try {
+      await onImageGenerate(prompt)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không tạo được ảnh AI")
+    } finally {
+      setIsGeneratingImage(false)
+    }
+  }
+
   async function withRagContext(originalMessage: string) {
     if (!originalMessage.trim()) return originalMessage
     setIsRagPrefetching(true)
@@ -324,6 +340,15 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
 
     const baseMessage = quotedText ? formatQuotedMessage(quotedText, value) : value
     if (!baseMessage.trim() && files.length === 0) return
+
+    const imagePrompt = files.length === 0 ? parseImageCommand(baseMessage) : null
+    if (imagePrompt) {
+      setQuotedText(null)
+      setSlashOpen(false)
+      await handleImageGenerate(imagePrompt)
+      onChange("")
+      return
+    }
 
     const finalMessage = await withRagContext(baseMessage)
     setQuotedText(null)
@@ -545,8 +570,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
           </DropdownMenu>
 
           <div className="hidden">
-            <RagPicker disabled={disabled || isRagPrefetching} />
+            <RagPicker disabled={disabled || isRagPrefetching || isGeneratingImage} />
           </div>
+
+          <ImageGenButton
+            disabled={disabled || isStreaming || !onImageGenerate}
+            loading={isGeneratingImage}
+            onGenerate={handleImageGenerate}
+          />
 
           <Tooltip>
             <TooltipTrigger asChild>

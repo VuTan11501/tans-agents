@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from "react"
 import { logEvent } from "@/lib/analytics"
+import { estimateCost, estimateTokens } from "@/lib/cost-estimator"
 import { recordTtft } from "@/lib/latency-tracker"
+import { logUsage } from "@/lib/usage-log"
 
 type ChatMessage = {
   id?: string
@@ -12,6 +14,7 @@ type ChatMessage = {
   provider?: string
   parts?: Array<{
     type?: string
+    text?: string
     toolInvocation?: {
       toolName?: string
       state?: string
@@ -29,6 +32,25 @@ function messageKey(message: ChatMessage, index: number) {
   if (message.id) return message.id
   const content = typeof message.content === "string" ? message.content.slice(0, 80) : ""
   return `${index}:${message.role ?? "unknown"}:${content}`
+}
+
+function extractText(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  return value
+    .map((part) => {
+      if (typeof part === "string") return part
+      if (part && typeof part === "object" && "text" in part && typeof part.text === "string") return part.text
+      return ""
+    })
+    .filter(Boolean)
+    .join("\n")
+}
+
+function getMessageText(message: ChatMessage): string {
+  const contentText = extractText(message.content)
+  if (contentText) return contentText
+  return (message.parts ?? []).map((part) => (part.type === "text" && part.text ? part.text : "")).filter(Boolean).join("\n")
 }
 
 export function useAnalyticsTracker({ messages = [], isLoading = false, error }: UseChatAnalyticsResult) {
@@ -88,6 +110,11 @@ export function useAnalyticsTracker({ messages = [], isLoading = false, error }:
       if (message.role === "assistant" && !isLoading && !loggedMessagesRef.current.has(key)) {
         const now = Date.now()
         const latencyMs = lastUserSentAtRef.current ? now - lastUserSentAtRef.current : undefined
+        const previousUser = messages.slice(0, index).reverse().find((item) => item.role === "user")
+        const provider = message.provider ?? previousUser?.provider ?? "unknown"
+        const model = message.model ?? previousUser?.model ?? "_default"
+        const inputTokens = estimateTokens(previousUser ? getMessageText(previousUser) : "")
+        const outputTokens = estimateTokens(getMessageText(message))
         loggedMessagesRef.current.add(key)
         logEvent({
           time: now,
@@ -95,6 +122,14 @@ export function useAnalyticsTracker({ messages = [], isLoading = false, error }:
           model: message.model,
           provider: message.provider,
           latencyMs,
+        })
+        logUsage({
+          ts: now,
+          provider,
+          model,
+          inputTokens,
+          outputTokens,
+          costUsd: estimateCost(inputTokens, outputTokens, model),
         })
       }
 
