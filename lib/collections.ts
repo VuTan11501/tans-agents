@@ -16,9 +16,17 @@ export interface DocumentChunk {
   source: string
 }
 
+export interface RagSource {
+  title: string
+  url?: string
+  filename?: string
+}
+
 export interface CollectionSearchResult {
+  chunk: string
   text: string
   source: string
+  sourceMeta: RagSource
   score: number
 }
 
@@ -114,7 +122,13 @@ export async function searchCollectionLocal({
   const queryEmbedding = await embedText(q)
   const chunks = await getChunks(collectionId)
   return chunks
-    .map((chunk) => ({ text: chunk.text, source: chunk.source, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
+    .map((chunk) => ({
+      chunk: chunk.text,
+      text: chunk.text,
+      source: chunk.source,
+      sourceMeta: parseSourceMeta(chunk.source),
+      score: cosineSimilarity(queryEmbedding, chunk.embedding),
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, Math.max(1, topK))
 }
@@ -174,6 +188,14 @@ function chunkText(text: string): string[] {
     chunks.push(clean.slice(start, start + CHUNK_SIZE).trim())
   }
   return chunks.filter(Boolean)
+}
+
+function parseSourceMeta(source: string): RagSource {
+  const [filename] = source.split("#")
+  if (/^https?:\/\//i.test(filename)) {
+    return { title: filename, url: filename }
+  }
+  return { title: filename || source, filename: filename || source }
 }
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {

@@ -98,6 +98,9 @@ const RULES: Record<ProviderKey, LimitRule[]> = {
     { match: /ministral/i, rpd: null, note: "Mistral free: 1 RPS, 500K TPM, 1B tokens/tháng" },
     { match: /.*/, rpd: null, note: "Mistral free: 1 RPS, 500K TPM, 1B tokens/tháng" },
   ],
+  ollama: [
+    { match: /.*/, rpd: null, note: "Ollama local — không có giới hạn cloud" },
+  ],
 }
 
 export function getModelLimit(provider: ProviderKey, model: string): LimitRule {

@@ -78,6 +78,12 @@ export const PROVIDERS = {
     ],
     default: "mistral-small-latest",
   },
+  ollama: {
+    label: "Ollama (local)",
+    envKey: "OLLAMA_BASE_URL",
+    models: ["llama3.2", "qwen2.5-coder", "gemma3"],
+    default: "llama3.2",
+  },
 } as const
 
 export type ProviderKey = keyof typeof PROVIDERS

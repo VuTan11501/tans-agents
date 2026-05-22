@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog"
 import { Eye, EyeOff, KeyRound, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { UserKeyProvider, UserKeys } from "@/lib/user-keys"
+import { DEFAULT_OLLAMA_BASE_URL, type UserKeyProvider, type UserKeys } from "@/lib/user-keys"
 
 const PROVIDERS: Array<{ key: UserKeyProvider; label: string; href: string }> = [
   { key: "groq", label: "Groq", href: "https://groq.com/keys" },
@@ -27,7 +27,7 @@ interface ApiKeysDialogProps {
 
 export function ApiKeysDialog({ open, onOpenChange, keys, setKey, clearAll }: ApiKeysDialogProps) {
   const [draft, setDraft] = useState<UserKeys>(keys)
-  const [visible, setVisible] = useState<Record<UserKeyProvider, boolean>>({
+  const [visible, setVisible] = useState<Partial<Record<UserKeyProvider, boolean>>>({
     groq: false,
     gemini: false,
     github: false,
@@ -45,11 +45,12 @@ export function ApiKeysDialog({ open, onOpenChange, keys, setKey, clearAll }: Ap
     for (const provider of PROVIDERS) {
       setKey(provider.key, draft[provider.key] ?? "")
     }
+    setKey("ollamaBaseUrl", draft.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL)
     onOpenChange(false)
   }
 
   function handleClearAll() {
-    setDraft({})
+    setDraft({ ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL })
     clearAll()
   }
 
@@ -66,6 +67,17 @@ export function ApiKeysDialog({ open, onOpenChange, keys, setKey, clearAll }: Ap
           </Dialog.Description>
 
           <div className="mt-4 space-y-3 overflow-y-auto pr-1">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Ollama base URL</span>
+              <Input
+                type="url"
+                value={draft.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL}
+                onChange={(event) => setDraft((current) => ({ ...current, ollamaBaseUrl: event.target.value }))}
+                placeholder={DEFAULT_OLLAMA_BASE_URL}
+              />
+              <p className="text-xs text-muted-foreground">Dùng cho Ollama local, ví dụ http://localhost:11434.</p>
+            </label>
+
             {PROVIDERS.map((provider) => {
               const isVisible = visible[provider.key]
               return (

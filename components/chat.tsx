@@ -8,7 +8,7 @@ import { Sidebar } from "@/components/sidebar"
 import { EmptyState } from "@/components/empty-state"
 import { MessageBubble, isLikelyTruncated } from "@/components/message"
 import { Composer } from "@/components/composer"
-import { ShortcutsDialog } from "@/components/shortcuts-dialog"
+import KeyboardShortcutsDialog from "@/components/keyboard-shortcuts-dialog"
 import { ChatSearch } from "@/components/chat-search"
 import { BulkActions } from "@/components/bulk-actions"
 import { MemoryDialog } from "@/components/memory-dialog"
@@ -609,6 +609,12 @@ export function Chat() {
 
   const handleChatKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null
+      if (event.key === "?" && !event.metaKey && !event.ctrlKey && !event.altKey && !target?.closest("input,textarea,[contenteditable='true']")) {
+        event.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
       if (event.key === "Escape" && selectionMode) {
         event.preventDefault()
         clearSelection()
@@ -934,7 +940,7 @@ export function Chat() {
         onClear={clearSelection}
       />
       <ChatSearch open={searchOpen} onOpenChange={setSearchOpen} refreshKey={searchRefreshKey} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <MemoryDialog
         open={memoryOpen}
         onOpenChange={setMemoryOpen}

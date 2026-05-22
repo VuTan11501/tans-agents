@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { list, remove } from "@/lib/offline-queue"
+import { runDueScheduledChats } from "@/lib/scheduled-chats"
 
 export function PWARegister() {
   const drainingRef = useRef(false)
@@ -69,12 +70,19 @@ export function PWARegister() {
     }
     const handleOffline = () => undefined
 
+    const scheduledTick = () => {
+      void runDueScheduledChats().catch(() => {})
+    }
+    const scheduledInterval = window.setInterval(scheduledTick, 60_000)
+
     void registerServiceWorker()
+    scheduledTick()
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
     if (navigator.onLine) window.setTimeout(handleOnline, 0)
 
     return () => {
+      window.clearInterval(scheduledInterval)
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
     }

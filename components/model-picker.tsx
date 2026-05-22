@@ -74,6 +74,8 @@ export function ModelPicker({
         ? userKeys?.cerebras
         : p === "mistral"
         ? userKeys?.mistral
+        : p === "ollama"
+        ? userKeys?.ollamaBaseUrl
         : undefined
     void discoverModels(p, userKey)
   }

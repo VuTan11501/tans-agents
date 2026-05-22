@@ -1,6 +1,6 @@
 "use client"
-import { useRef, useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
-import { ArrowUp, Brain, Eye, FileText, FolderArchive, Mic, Paperclip, Plus, Square, X } from "lucide-react"
+import { useRef, useEffect, useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { ArrowUp, Brain, Eye, FileText, FolderArchive, Mic, MicOff, Paperclip, Plus, Square, X } from "lucide-react"
 import { MarkdownPreview } from "@/components/markdown-preview"
 import { RagPicker } from "@/components/rag-picker"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,7 +16,8 @@ import { ImageMarkupDialog } from "@/components/image-markup-dialog"
 import { matchSlash, SLASH_COMMANDS, type SlashCommand } from "@/lib/slash"
 import { searchActiveCollection } from "@/lib/collections"
 import { countTokens } from "@/lib/tokens"
-import { useSpeechRecognition } from "@/hooks/use-voice"
+import { ACCEPTED_FILE_TYPES, filterAcceptedFiles } from "@/lib/dropzone"
+import { createVoiceRecognizer } from "@/lib/voice-input"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -41,7 +42,6 @@ interface ComposerProps {
 }
 
 const MAX_FILES = 4
-const ACCEPTED_FILE_TYPES = "image/*,application/pdf,text/*"
 const PREVIEW_STORAGE_KEY = "tans:composer:preview"
 const RAG_CONTEXT_LIMIT = 2000
 const DEFAULT_CONTEXT_LIMIT = 128_000
@@ -68,10 +68,6 @@ function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`
 }
 
-function isAcceptedFile(file: File) {
-  return file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/")
-}
-
 function formatQuotedMessage(quote: string, input: string) {
   const quotedMarkdown = `> ${quote.trim().split("\n").join("\n> ")}`
   return [quotedMarkdown, input.trim()].filter(Boolean).join("\n\n")
@@ -89,7 +85,9 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voiceBaseRef = useRef("")
-  const { supported: voiceSupported, listening: voiceListening, transcript: voiceTranscript, start: startVoice, stop: stopVoice } = useSpeechRecognition({ lang: "vi-VN" })
+  const voiceRecognizerRef = useRef<ReturnType<typeof createVoiceRecognizer> | null>(null)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [voiceListening, setVoiceListening] = useState(false)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -219,25 +217,41 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   }
 
   useEffect(() => {
-    if (!voiceTranscript) return
-    const base = voiceBaseRef.current
-    const separator = base.trim() && !base.endsWith(" ") ? " " : ""
-    handleChange(`${base}${separator}${voiceTranscript}`)
-  }, [voiceTranscript])
+    const recognizer = createVoiceRecognizer({
+      lang: "vi-VN",
+      onResult: (text, isFinal) => {
+        const base = voiceBaseRef.current
+        const separator = base.trim() && !base.endsWith(" ") && text ? " " : ""
+        handleChange(`${base}${separator}${text}`)
+        if (isFinal) setVoiceListening(false)
+      },
+      onError: (msg) => {
+        setVoiceListening(false)
+        toast.error(msg)
+      },
+      onEnd: () => setVoiceListening(false),
+    })
+    voiceRecognizerRef.current = recognizer
+    setVoiceSupported(recognizer.supported)
+    return () => recognizer.stop()
+  }, [])
 
   function handleVoiceToggle() {
+    if (!voiceSupported) return
     if (voiceListening) {
-      stopVoice()
+      voiceRecognizerRef.current?.stop()
+      setVoiceListening(false)
       return
     }
     voiceBaseRef.current = value
-    startVoice()
+    setVoiceListening(true)
+    voiceRecognizerRef.current?.start()
     ref.current?.focus()
   }
 
   function addFiles(nextFiles: File[]) {
     if (!onFilesChange) return
-    const accepted = nextFiles.filter(isAcceptedFile)
+    const accepted = filterAcceptedFiles(nextFiles)
     if (accepted.length === 0) return
     onFilesChange([...files, ...accepted].slice(0, MAX_FILES))
   }
@@ -275,6 +289,13 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
     setIsDragging(false)
     if (disabled) return
     addFiles(Array.from(e.dataTransfer.files ?? []))
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const pastedFiles = Array.from(e.clipboardData.files ?? [])
+    if (disabled || pastedFiles.length === 0) return
+    e.preventDefault()
+    addFiles(pastedFiles)
   }
 
   async function withRagContext(originalMessage: string) {
@@ -385,7 +406,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
       >
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl border-2 border-dashed border-violet-400 bg-background/70 text-sm font-medium text-violet-500 backdrop-blur-sm">
-            Thả file vào đây (tối đa {MAX_FILES})
+            Thả tệp vào đây
           </div>
         )}
 
@@ -461,6 +482,7 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
                   ? "Hỏi gì đó..."
                   : "Hỏi bất cứ điều gì... (Shift + Enter để xuống dòng)")
               }
+              onPaste={handlePaste}
               disabled={disabled}
               rows={1}
               className="min-h-[28px] max-h-60 resize-none border-0 bg-transparent p-0 py-2 pb-5 text-[15px] shadow-none focus-visible:ring-0"
@@ -526,22 +548,28 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             <RagPicker disabled={disabled || isRagPrefetching} />
           </div>
 
-          {voiceSupported && (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              disabled={disabled}
-              onClick={handleVoiceToggle}
-              className={cn(
-                "h-9 w-9 shrink-0 rounded-full",
-                voiceListening && "animate-pulse bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
-              )}
-              title={voiceListening ? "Dừng ghi âm" : "Nhập bằng giọng nói"}
-            >
-              <Mic className="h-4 w-4" />
-            </Button>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  disabled={disabled || !voiceSupported}
+                  onClick={handleVoiceToggle}
+                  className={cn(
+                    "relative h-9 w-9 shrink-0 rounded-full",
+                    voiceListening && "bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+                  )}
+                  aria-label={voiceListening ? "Dừng ghi âm" : "Nhập bằng giọng nói"}
+                >
+                  {voiceListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {voiceListening && <span className="absolute right-1 top-1 h-2 w-2 animate-ping rounded-full bg-red-500" />}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{voiceSupported ? (voiceListening ? "Dừng ghi âm" : "Nhập bằng giọng nói") : "Trình duyệt không hỗ trợ"}</TooltipContent>
+          </Tooltip>
 
           {isStreaming ? (
             <Button

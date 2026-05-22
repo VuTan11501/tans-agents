@@ -6,25 +6,31 @@ export type UserKeys = {
   cerebras?: string
   mistral?: string
   brave?: string
+  ollamaBaseUrl?: string
 }
 
 export type UserKeyProvider = keyof UserKeys
 
 export const USER_KEYS_STORAGE_KEY = "tans-agents:keys"
+export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 
-const PROVIDERS: UserKeyProvider[] = ["groq", "gemini", "github", "openrouter", "cerebras", "mistral", "brave"]
+const API_KEY_PROVIDERS: UserKeyProvider[] = ["groq", "gemini", "github", "openrouter", "cerebras", "mistral", "brave"]
 
 function sanitizeKeys(value: unknown): UserKeys {
   if (!value || typeof value !== "object") return {}
 
   const source = value as Record<string, unknown>
   const keys: UserKeys = {}
-  for (const provider of PROVIDERS) {
+  for (const provider of API_KEY_PROVIDERS) {
     const key = source[provider]
     if (typeof key === "string" && key.trim()) {
       keys[provider] = key.trim()
     }
   }
+  const ollamaBaseUrl = source.ollamaBaseUrl
+  keys.ollamaBaseUrl = typeof ollamaBaseUrl === "string" && ollamaBaseUrl.trim()
+    ? ollamaBaseUrl.trim().replace(/\/+$/, "")
+    : DEFAULT_OLLAMA_BASE_URL
   return keys
 }
 
@@ -33,7 +39,7 @@ export function loadUserKeys(): UserKeys {
 
   try {
     const raw = window.localStorage.getItem(USER_KEYS_STORAGE_KEY)
-    return raw ? sanitizeKeys(JSON.parse(raw)) : {}
+    return raw ? sanitizeKeys(JSON.parse(raw)) : { ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL }
   } catch {
     return {}
   }
@@ -47,5 +53,5 @@ export function saveUserKeys(keys: UserKeys) {
 }
 
 export function hasAnyUserKey(keys: UserKeys) {
-  return Object.values(keys).some(Boolean)
+  return API_KEY_PROVIDERS.some((provider) => Boolean(keys[provider]))
 }

@@ -31,9 +31,15 @@ const SYSTEM_PROMPT =
 
 function getUserApiKey(provider: ProviderKey, userKeys?: UserKeys) {
   if (!userKeys || typeof userKeys !== "object") return undefined
+  if (provider === "ollama") return undefined
 
   const key = provider === "google" ? userKeys.gemini : userKeys[provider]
   return typeof key === "string" && key.trim() ? key.trim() : undefined
+}
+
+function getOllamaBaseUrl(userKeys?: UserKeys) {
+  const raw = userKeys?.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  return raw.replace(/\/+$/, "")
 }
 
 function providerForModel(modelId: string): ProviderKey | undefined {
@@ -50,6 +56,7 @@ function hasApiKey(provider: ProviderKey, userKeys?: UserKeys) {
   if (provider === "openrouter") return Boolean(process.env.OPENROUTER_API_KEY)
   if (provider === "cerebras") return Boolean(process.env.CEREBRAS_API_KEY)
   if (provider === "mistral") return Boolean(process.env.MISTRAL_API_KEY)
+  if (provider === "ollama") return true
   return false
 }
 
@@ -93,6 +100,9 @@ function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
     const apiKey = userApiKey || process.env.MISTRAL_API_KEY
     if (!apiKey) throw new Error("Missing MISTRAL_API_KEY")
     return createMistral({ apiKey })(modelId)
+  }
+  if (provider === "ollama") {
+    return createOpenAI({ apiKey: "ollama", baseURL: `${getOllamaBaseUrl(userKeys)}/v1` })(modelId)
   }
   throw new Error(`Unknown provider: ${provider}`)
 }
