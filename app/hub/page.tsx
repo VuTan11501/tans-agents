@@ -39,6 +39,7 @@ const CATEGORIES: FeatureCategory[] = [
       { href: "/resume", title: "CV/Resume", description: "Phân tích ATS, khớp JD và tối ưu CV bằng AI.", icon: "📄" },
       { href: "/personas-mp", title: "Persona Marketplace", description: "Chọn và quản lý persona cho từng ngữ cảnh.", icon: "🎭" },
       { href: "/templates", title: "Prompt templates", description: "Thư viện mẫu prompt có biến điền nhanh.", icon: "✨" },
+      { href: "/email", title: "Viết email", description: "Soạn email chuyên nghiệp, rõ ý và đúng tông giọng.", icon: "✉️" },
     ],
   },
   {
@@ -64,6 +65,20 @@ const CATEGORIES: FeatureCategory[] = [
       { href: "/meeting", title: "Phòng họp đa người", description: "Tạo và tham gia phòng họp với AI hỗ trợ.", icon: "🎙️" },
       { href: "/meeting/demo", title: "Phòng họp theo ID", description: "Mở nhanh route phòng họp động /meeting/[roomId].", icon: "🚪" },
       { href: "/share/demo", title: "Chia sẻ", description: "Xem bản chia sẻ từ Sidebar của từng session.", icon: "🔗" },
+      { href: "/meeting-notes", title: "Ghi chú họp", description: "Tóm tắt nội dung họp, quyết định và việc cần làm.", icon: "📝" },
+      { href: "/interview", title: "Phỏng vấn mock", description: "Luyện phỏng vấn với câu hỏi, phản hồi và gợi ý cải thiện.", icon: "🎤" },
+    ],
+  },
+  {
+    id: "life-productivity",
+    label: "Cuộc sống & Năng suất",
+    key: "life productivity soft skills",
+    items: [
+      { href: "/recipe", title: "Nấu ăn", description: "Gợi ý món ăn, nguyên liệu và các bước nấu phù hợp.", icon: "🍳" },
+      { href: "/travel", title: "Lên kế hoạch du lịch", description: "Lập lịch trình, ngân sách và checklist cho chuyến đi.", icon: "✈️" },
+      { href: "/study", title: "Lộ trình học", description: "Xây dựng kế hoạch học tập theo mục tiêu và thời gian.", icon: "📚" },
+      { href: "/music", title: "Gợi ý nhạc", description: "Tìm playlist và bài hát theo tâm trạng hoặc hoạt động.", icon: "🎵" },
+      { href: "/names", title: "Tạo tên", description: "Gợi ý tên thương hiệu, dự án, sản phẩm hoặc nhân vật.", icon: "🏷️" },
     ],
   },
   {
