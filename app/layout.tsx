@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth-provider"
 import { PWARegister } from "@/components/pwa-register"
 import { VoiceMode } from "@/components/voice-mode"
+import CommandPalette from "@/components/command-palette"
 import { Toaster } from "sonner"
 import "./globals.css"
 
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TooltipProvider delayDuration={300}>
               {children}
               <VoiceMode />
+              <CommandPalette />
               <Toaster position="bottom-center" theme="system" richColors closeButton />
             </TooltipProvider>
           </ThemeProvider>

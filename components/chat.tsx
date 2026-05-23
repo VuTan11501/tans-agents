@@ -31,6 +31,8 @@ import { streamAbComparison, type AbStreamHandle } from "@/lib/ab"
 import { getActiveCollectionId, RAG_ACTIVE_COLLECTION_EVENT } from "@/lib/collections"
 import { cn } from "@/lib/utils"
 import type { PromptItem } from "@/hooks/use-prompts"
+import { generateTitle } from "@/lib/auto-title"
+import { extractFactsFromMessage } from "@/lib/auto-memory"
 
 function newId() {
   return (
@@ -163,6 +165,31 @@ export function Chat() {
     },
     onFinish: () => {
       window.dispatchEvent(new CustomEvent("tans:assistant-finished"))
+      
+      // Auto-Title: After first user message AI response, generate title
+      if (messagesRef.current.length === 2 && currentSession && !currentSession.title) {
+        generateTitle(messagesRef.current).then((title: string | null) => {
+          if (title) {
+            history.rename(sessionId, title)
+          }
+        }).catch(() => {
+          // Silent failure for title generation
+        })
+      }
+      
+      // Auto-Memory: Extract facts from latest user message
+      const latestUserMessage = [...messagesRef.current]
+        .reverse()
+        .find((m) => m.role === "user")?.content
+      if (latestUserMessage && typeof latestUserMessage === "string") {
+        extractFactsFromMessage({
+          userMessage: latestUserMessage,
+          knownFacts: memory.facts?.map((f: any) => f.text) ?? [],
+        }).catch(() => {
+          // Silent failure for memory extraction
+        })
+      }
+      
       // Bump rate-limit usage counter for the model that produced this response.
       // For "auto" routing the model field stays "auto" — we don't know the actual
       // dispatched model here so we skip; the api/chat route is responsible for

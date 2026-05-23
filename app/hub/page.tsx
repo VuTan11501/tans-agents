@@ -112,6 +112,21 @@ const CATEGORIES: FeatureCategory[] = [
     ],
   },
   {
+    id: "services-docs",
+    label: "Dịch vụ & Tài liệu",
+    key: "services legal medical social finance shopping",
+    items: [
+      { href: "/legal", title: "Tư vấn pháp lý", description: "Tư vấn, soạn thảo và kiểm tra hợp đồng, quy định.", icon: "⚖️" },
+      { href: "/medical", title: "Tư vấn y tế", description: "Thông tin sức khỏe, triệu chứng, thuốc và chăm sóc.", icon: "⚕️" },
+      { href: "/social", title: "Mạng xã hội", description: "Lập kế hoạch, sáng tác nội dung cho các nền tảng xã hội.", icon: "📱" },
+      { href: "/finance", title: "Tài chính cá nhân", description: "Quản lý ngân sách, lập kế hoạch tài chính, đầu tư.", icon: "💰" },
+      { href: "/shopping", title: "Hỗ trợ mua sắm", description: "Tìm sản phẩm, so sánh giá, gợi ý lựa chọn phù hợp.", icon: "🛍️" },
+      { href: "/homework", title: "Hỗ trợ học tập", description: "Giải bài tập, giải thích bài học, ôn tập kỳ thi.", icon: "✏️" },
+      { href: "/pitch", title: "Soạn pitch", description: "Lập kế hoạch và viết pitch thuyết phục cho startup hoặc dự án.", icon: "🎯" },
+      { href: "/cover-letter", title: "Viết cover letter", description: "Soạn thảo cover letter chuyên nghiệp khi ứng tuyển công việc.", icon: "📮" },
+    ],
+  },
+  {
     id: "help",
     label: "Trợ giúp",
     key: "help",
