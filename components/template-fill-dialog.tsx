@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  clearPromptPlaybookContext,
   fillPromptTemplate,
   getPromptVariableDefaults,
-  PROMPT_PLAYBOOK_CONTEXT_KEY,
+  PROMPT_PLAYBOOK_KEYS,
+  savePromptPlaybookContext,
   type PromptTemplate,
 } from "@/lib/prompt-templates"
 import { cn } from "@/lib/utils"
@@ -73,9 +75,17 @@ export function TemplateFillDialog({ template, open, onOpenChange }: TemplateFil
     window.location.href = `/?prompt=${encodeURIComponent(preview)}`
   }
 
+  function applyDefaults(message?: string) {
+    if (!template) return
+    const defaults = getPromptVariableDefaults()
+    setValues(Object.fromEntries(template.variables.map((variable) => [variable, defaults[variable] ?? ""])))
+    if (message) setCopyStatus(message)
+  }
+
   function savePlaybookDefaults() {
     const picked = Object.fromEntries(
-      ["repo", "ticket", "goal", "stack"]
+      PROMPT_PLAYBOOK_KEYS
+        .filter((key) => template?.variables.includes(key))
         .filter((key) => typeof values[key] === "string" && values[key].trim())
         .map((key) => [key, values[key].trim()])
     )
@@ -83,14 +93,21 @@ export function TemplateFillDialog({ template, open, onOpenChange }: TemplateFil
       setCopyStatus("Không có biến playbook để lưu mặc định.")
       return
     }
-    try {
-      const current = JSON.parse(window.localStorage.getItem(PROMPT_PLAYBOOK_CONTEXT_KEY) || "{}")
-      const next = { ...(current && typeof current === "object" ? current : {}), ...picked }
-      window.localStorage.setItem(PROMPT_PLAYBOOK_CONTEXT_KEY, JSON.stringify(next))
+    const ok = savePromptPlaybookContext(picked)
+    if (ok) {
       setCopyStatus("Đã lưu mặc định playbook.")
-    } catch {
+    } else {
       setCopyStatus("Không thể lưu mặc định playbook.")
     }
+  }
+
+  function clearPlaybookDefaults() {
+    const ok = clearPromptPlaybookContext()
+    if (!ok) {
+      setCopyStatus("Không thể xoá mặc định playbook.")
+      return
+    }
+    applyDefaults("Đã xoá mặc định playbook đã lưu.")
   }
 
   return (
@@ -152,8 +169,14 @@ export function TemplateFillDialog({ template, open, onOpenChange }: TemplateFil
               {copyStatus}
             </p>
             <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="ghost" onClick={() => applyDefaults("Đã nạp mặc định hiện tại.")}>
+                Nạp mặc định
+              </Button>
               <Button type="button" variant="outline" onClick={savePlaybookDefaults}>
                 Lưu mặc định playbook
+              </Button>
+              <Button type="button" variant="outline" onClick={clearPlaybookDefaults}>
+                Xóa mặc định playbook
               </Button>
               <Button type="button" variant="outline" onClick={handleCopy} className="gap-2">
                 <Copy className="h-4 w-4" /> Sao chép prompt

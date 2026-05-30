@@ -15,6 +15,8 @@ export interface PromptTemplate {
 
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'tans-agents:prompt-templates-v1'
 export const PROMPT_PLAYBOOK_CONTEXT_KEY = 'tans-agents:playbook-context'
+export const PROMPT_PLAYBOOK_KEYS = ["repo", "ticket", "goal", "stack"] as const
+export type PromptPlaybookKey = (typeof PROMPT_PLAYBOOK_KEYS)[number]
 
 export const PROMPT_TEMPLATE_CATEGORIES: Array<{ value: PromptTemplateCategory | 'all'; label: string }> = [
   { value: 'all', label: 'Tất cả' },
@@ -232,24 +234,52 @@ export function fillPromptTemplate(body: string, values: Record<string, string>)
   })
 }
 
+function toStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {}
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    .map(([key, item]) => [key, item.trim()] as const)
+    .filter(([, item]) => Boolean(item))
+  return Object.fromEntries(entries)
+}
+
+export function readPromptPlaybookContext(): Record<string, string> {
+  if (!canUseStorage()) return {}
+  try {
+    const raw = window.localStorage.getItem(PROMPT_PLAYBOOK_CONTEXT_KEY)
+    if (!raw) return {}
+    return toStringRecord(JSON.parse(raw))
+  } catch {
+    return {}
+  }
+}
+
+export function savePromptPlaybookContext(values: Record<string, string>): boolean {
+  if (!canUseStorage()) return false
+  try {
+    const current = readPromptPlaybookContext()
+    const next = { ...current, ...toStringRecord(values) }
+    window.localStorage.setItem(PROMPT_PLAYBOOK_CONTEXT_KEY, JSON.stringify(next))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function clearPromptPlaybookContext(): boolean {
+  if (!canUseStorage()) return false
+  try {
+    window.localStorage.removeItem(PROMPT_PLAYBOOK_CONTEXT_KEY)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function getPromptVariableDefaults(): Record<string, string> {
   if (!canUseStorage()) return {}
   const workspacePack = getWorkspacePackById(readActiveWorkspacePackId())
-  let context: Record<string, string> = {}
-  try {
-    const raw = window.localStorage.getItem(PROMPT_PLAYBOOK_CONTEXT_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') {
-        const entries = Object.entries(parsed as Record<string, unknown>).filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string'
-        )
-        context = Object.fromEntries(entries)
-      }
-    }
-  } catch {
-    // ignore parse errors
-  }
+  const context = readPromptPlaybookContext()
   return {
     ...(workspacePack?.promptDefaults ?? {}),
     ...context,

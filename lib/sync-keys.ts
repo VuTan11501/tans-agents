@@ -24,6 +24,7 @@ export const SYNC_KEYS: Record<SyncScope, string[]> = {
     "tans-agents:snippets",
     "tans-agents:active-workspace-pack",
     "tans-agents:playbook-context",
+    "tans-agents:share-settings-v1",
     "tans:composer:preview",
     "tans:voice-mode:on",
     "tans:voice-mode:lang",

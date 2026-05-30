@@ -13,6 +13,12 @@ type ChatSession = {
   [key: string]: unknown
 }
 
+type ShareMeta = {
+  expiresAt?: number
+  protected?: boolean
+  redacted?: boolean
+}
+
 function textFromContent(content: unknown): string {
   if (typeof content === "string") return content
   if (Array.isArray(content)) return content.map(textFromContent).filter(Boolean).join("\n")
@@ -25,7 +31,7 @@ function textFromContent(content: unknown): string {
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ok"; session: ChatSession }
+  | { kind: "ok"; session: ChatSession; meta: ShareMeta }
   | { kind: "needs-password"; title?: string; error?: string }
   | { kind: "not-found" }
 
@@ -51,7 +57,13 @@ export function ShareView({ id }: { id: string }) {
           return
         }
         const data = await res.json()
-        if (data?.session) setState({ kind: "ok", session: data.session })
+        if (data?.session) {
+          setState({
+            kind: "ok",
+            session: data.session,
+            meta: data?.meta && typeof data.meta === "object" ? (data.meta as ShareMeta) : {},
+          })
+        }
         else setState({ kind: "not-found" })
       } catch {
         setState({ kind: "not-found" })
@@ -118,7 +130,12 @@ export function ShareView({ id }: { id: string }) {
   }
 
   const session = state.session
+  const meta = state.meta
   const messages = session.messages?.filter((m: any) => m?.role !== "system") ?? []
+  const expiresDate =
+    typeof meta.expiresAt === "number"
+      ? new Date(meta.expiresAt).toLocaleDateString("vi-VN")
+      : null
 
   return (
     <main className="min-h-screen bg-background">
@@ -130,6 +147,23 @@ export function ShareView({ id }: { id: string }) {
           <h1 className="mt-2 line-clamp-2 text-2xl font-semibold tracking-tight">
             {session.title ?? "Tan's Agent"}
           </h1>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {expiresDate && (
+              <span className="rounded-full border border-border/70 bg-muted px-2 py-1 text-muted-foreground">
+                Hết hạn: {expiresDate}
+              </span>
+            )}
+            {meta.redacted === true && (
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
+                Đã ẩn dữ liệu nhạy cảm
+              </span>
+            )}
+            {meta.redacted === false && (
+              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+                Chưa ẩn dữ liệu nhạy cảm
+              </span>
+            )}
+          </div>
         </header>
 
         <section className="flex-1 py-8">

@@ -65,6 +65,51 @@ interface SidebarProps {
 }
 
 const SENSITIVE_TOOLS = ["runPython", "runJs", "runSql", "fetchUrl", "githubQuery"] as const
+const SHARE_SETTINGS_KEY = "tans-agents:share-settings-v1"
+const DEFAULT_SHARE_SETTINGS = {
+  redact: true,
+  expiresInDays: 7,
+  openAfterCreate: false,
+}
+
+type ShareSettings = {
+  redact: boolean
+  expiresInDays: number
+  openAfterCreate: boolean
+}
+
+function clampShareDays(value: unknown): number {
+  const text = typeof value === "string" ? value.trim() : String(value ?? "").trim()
+  if (!text) return DEFAULT_SHARE_SETTINGS.expiresInDays
+  const parsed = Math.floor(Number(text))
+  if (!Number.isFinite(parsed)) return DEFAULT_SHARE_SETTINGS.expiresInDays
+  return Math.min(90, Math.max(1, parsed))
+}
+
+function readShareSettings(): ShareSettings {
+  if (typeof window === "undefined") return DEFAULT_SHARE_SETTINGS
+  try {
+    const raw = window.localStorage.getItem(SHARE_SETTINGS_KEY)
+    if (!raw) return DEFAULT_SHARE_SETTINGS
+    const parsed = JSON.parse(raw) as Partial<ShareSettings>
+    return {
+      redact: parsed.redact !== false,
+      expiresInDays: clampShareDays(parsed.expiresInDays),
+      openAfterCreate: parsed.openAfterCreate === true,
+    }
+  } catch {
+    return DEFAULT_SHARE_SETTINGS
+  }
+}
+
+function writeShareSettings(settings: ShareSettings) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(SHARE_SETTINGS_KEY, JSON.stringify(settings))
+  } catch {
+    // ignore localStorage quota/privacy errors for non-critical setting
+  }
+}
 
 function timeAgo(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -369,8 +414,13 @@ function SessionItem({
   const [draft, setDraft] = useState(session.title)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [shareRedact, setShareRedact] = useState(DEFAULT_SHARE_SETTINGS.redact)
+  const [shareExpiresInDays, setShareExpiresInDays] = useState(String(DEFAULT_SHARE_SETTINGS.expiresInDays))
+  const [sharePassword, setSharePassword] = useState("")
+  const [shareOpenAfterCreate, setShareOpenAfterCreate] = useState(DEFAULT_SHARE_SETTINGS.openAfterCreate)
   const [toolDraft, setToolDraft] = useState<string[]>(() => [...(session.enabledTools ?? TOOL_NAMES)])
   const [smartRetryDraft, setSmartRetryDraft] = useState(session.smartRetry !== false)
 
@@ -385,26 +435,58 @@ function SessionItem({
     window.setTimeout(() => setShareNotice(null), 3000)
   }
 
-  async function handleShare() {
+  function openShareDialog() {
+    const settings = readShareSettings()
+    setShareRedact(settings.redact)
+    setShareExpiresInDays(String(settings.expiresInDays))
+    setShareOpenAfterCreate(settings.openAfterCreate)
+    setSharePassword("")
+    setShareOpen(true)
+  }
+
+  async function handleCreateShare() {
     if (sharing) return
+    const expiresInDays = clampShareDays(shareExpiresInDays)
+    const password = sharePassword.trim()
     setSharing(true)
 
     try {
       const response = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, redact: true }),
+        body: JSON.stringify({
+          session,
+          redact: shareRedact,
+          expiresInDays,
+          password: password || undefined,
+        }),
       })
 
       if (!response.ok) throw new Error("Share request failed")
 
-      const data = (await response.json()) as { id?: string; url?: string }
+      const data = (await response.json()) as {
+        id?: string
+        url?: string
+        protected?: boolean
+        expiresInDays?: number
+      }
       const sharePath = data.url ?? (data.id ? `/share/${data.id}` : null)
       if (!sharePath) throw new Error("Share URL missing")
 
       const shareUrl = new URL(sharePath, window.location.origin).toString()
       await navigator.clipboard.writeText(shareUrl)
-      showShareToast("Đã copy link chia sẻ")
+      writeShareSettings({
+        redact: shareRedact,
+        expiresInDays,
+        openAfterCreate: shareOpenAfterCreate,
+      })
+      if (shareOpenAfterCreate) {
+        window.open(shareUrl, "_blank", "noopener,noreferrer")
+      }
+      setShareOpen(false)
+      showShareToast(
+        `Đã copy link chia sẻ (${data.expiresInDays ?? expiresInDays} ngày${data.protected ? ", có mật khẩu" : ""})`
+      )
     } catch (error) {
       console.error(error)
       showShareToast("Không thể tạo link chia sẻ", "error")
@@ -570,10 +652,10 @@ function SessionItem({
             disabled={sharing}
             onSelect={(e) => {
               e.preventDefault()
-              void handleShare()
+              openShareDialog()
             }}
           >
-            🔗 {sharing ? "Đang chia sẻ..." : "Chia sẻ"}
+            🔗 {sharing ? "Đang chia sẻ..." : "Chia sẻ..."}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2 text-xs"
@@ -630,6 +712,80 @@ function SessionItem({
         {shareNotice.message}
       </div>
     )}
+    <Dialog.Root open={shareOpen} onOpenChange={setShareOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border bg-background p-5 shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 duration-200">
+          <Dialog.Title className="text-base font-semibold">🔗 Chia sẻ cuộc trò chuyện</Dialog.Title>
+          <Dialog.Description className="mt-1 text-xs text-muted-foreground">
+            Tùy chỉnh mức riêng tư trước khi tạo link. Link sẽ được copy vào clipboard.
+          </Dialog.Description>
+
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleCreateShare()
+            }}
+          >
+            <label className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm">
+              <span>Ẩn dữ liệu nhạy cảm</span>
+              <input
+                type="checkbox"
+                checked={shareRedact}
+                onChange={(event) => setShareRedact(event.target.checked)}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+            </label>
+
+            <label className="block space-y-1 text-xs text-muted-foreground">
+              <span>Thời hạn link (1-90 ngày)</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={shareExpiresInDays}
+                onChange={(event) => setShareExpiresInDays(event.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              />
+            </label>
+
+            <label className="block space-y-1 text-xs text-muted-foreground">
+              <span>Mật khẩu (tuỳ chọn)</span>
+              <Input
+                type="password"
+                value={sharePassword}
+                onChange={(event) => setSharePassword(event.target.value)}
+                placeholder="Để trống nếu không cần"
+              />
+            </label>
+
+            <label className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm">
+              <span>Mở link ngay sau khi tạo</span>
+              <input
+                type="checkbox"
+                checked={shareOpenAfterCreate}
+                onChange={(event) => setShareOpenAfterCreate(event.target.checked)}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+            </label>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShareOpen(false)} disabled={sharing}>
+                Hủy
+              </Button>
+              <Button type="submit" size="sm" disabled={sharing}>
+                {sharing ? "Đang tạo..." : "Tạo link & copy"}
+              </Button>
+            </div>
+          </form>
+
+          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted">
+            <XIcon className="h-4 w-4" />
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
     <Dialog.Root open={toolsOpen} onOpenChange={setToolsOpen}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />

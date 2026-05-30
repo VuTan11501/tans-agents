@@ -23,6 +23,7 @@ type ChatSession = {
 type ShareEntry = {
   session: ChatSession
   expiresAt: number
+  redacted: boolean
   passwordHash?: string
 }
 
@@ -71,10 +72,12 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID().slice(0, 10)
   const passwordHash = password ? await sha256(password) : undefined
   const safeSession = redact ? redactSessionForShare(session) : session
+  const expiresAt = Date.now() + ttlDays * 24 * 60 * 60 * 1000
 
   shareStore().set(id, {
     session: safeSession,
-    expiresAt: Date.now() + ttlDays * 24 * 60 * 60 * 1000,
+    expiresAt,
+    redacted: redact,
     passwordHash,
   })
 
@@ -82,6 +85,8 @@ export async function POST(request: Request) {
     id,
     url: `/share/${id}`,
     expiresInDays: ttlDays,
+    expiresAt,
+    redacted: redact,
     protected: Boolean(passwordHash),
   })
 }
@@ -113,5 +118,12 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ session: entry.session })
+  return NextResponse.json({
+    session: entry.session,
+    meta: {
+      expiresAt: entry.expiresAt,
+      protected: Boolean(entry.passwordHash),
+      redacted: entry.redacted ?? true,
+    },
+  })
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import * as Dialog from "@radix-ui/react-dialog"
 import { Plus, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,8 @@ const CONFIDENCE_OPTIONS = [
   { value: 0.7, label: "Vừa" },
   { value: 0.9, label: "Cao" },
 ]
+const EXPIRING_SOON_MS = 7 * 24 * 60 * 60 * 1000
+type FactFilter = "all" | "expiring" | "low-confidence"
 
 function expiresLabel(expiresAt?: number) {
   if (!expiresAt) return "Không hết hạn"
@@ -30,6 +32,11 @@ function expiresLabel(expiresAt?: number) {
   } catch {
     return "Có hết hạn"
   }
+}
+
+function isExpiringSoon(expiresAt?: number, now = Date.now()) {
+  if (typeof expiresAt !== "number") return false
+  return expiresAt > now && expiresAt - now <= EXPIRING_SOON_MS
 }
 
 export function MemoryDialog({
@@ -44,6 +51,35 @@ export function MemoryDialog({
   const [draftFact, setDraftFact] = useState("")
   const [draftConfidence, setDraftConfidence] = useState(0.7)
   const [draftExpiryDays, setDraftExpiryDays] = useState("")
+  const [factFilter, setFactFilter] = useState<FactFilter>("all")
+
+  const factsWithIndex = useMemo(
+    () => memory.facts.map((fact, originalIndex) => ({ fact, originalIndex })),
+    [memory.facts]
+  )
+  const filterCounts = useMemo(() => {
+    const now = Date.now()
+    return {
+      all: factsWithIndex.length,
+      expiring: factsWithIndex.filter(({ fact }) => isExpiringSoon(fact.expiresAt, now)).length,
+      lowConfidence: factsWithIndex.filter(({ fact }) => fact.confidence < 0.6).length,
+    }
+  }, [factsWithIndex])
+  const displayFacts = useMemo(() => {
+    const now = Date.now()
+    const filtered = factsWithIndex.filter(({ fact }) => {
+      if (factFilter === "expiring") return isExpiringSoon(fact.expiresAt, now)
+      if (factFilter === "low-confidence") return fact.confidence < 0.6
+      return true
+    })
+    return [...filtered].sort((a, b) => {
+      const aExpiry = typeof a.fact.expiresAt === "number" ? a.fact.expiresAt : Number.POSITIVE_INFINITY
+      const bExpiry = typeof b.fact.expiresAt === "number" ? b.fact.expiresAt : Number.POSITIVE_INFINITY
+      if (aExpiry !== bExpiry) return aExpiry - bExpiry
+      if (a.fact.confidence !== b.fact.confidence) return b.fact.confidence - a.fact.confidence
+      return a.originalIndex - b.originalIndex
+    })
+  }, [factFilter, factsWithIndex])
 
   function handleAddFact() {
     const expiresInDays = draftExpiryDays.trim() ? Number(draftExpiryDays) : null
@@ -86,6 +122,31 @@ export function MemoryDialog({
                   </Button>
                 )}
               </div>
+
+              {memory.facts.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {(
+                    [
+                      { value: "all", label: `Tất cả (${filterCounts.all})` },
+                      { value: "expiring", label: `Sắp hết hạn (${filterCounts.expiring})` },
+                      { value: "low-confidence", label: `Tin cậy thấp (${filterCounts.lowConfidence})` },
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFactFilter(option.value)}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                        factFilter === option.value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border/70 text-muted-foreground hover:bg-muted/60"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-2 rounded-lg border bg-card/40 p-2">
                 <input
@@ -137,21 +198,37 @@ export function MemoryDialog({
                 <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
                   Chưa có sự thật nào được lưu.
                 </p>
+              ) : displayFacts.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                  Không có sự thật nào khớp bộ lọc hiện tại.
+                </p>
               ) : (
                 <ul className="space-y-2">
-                  {memory.facts.map((fact, index) => (
-                    <li key={`${fact.text}-${index}`} className="flex items-start gap-2 rounded-lg border bg-card/60 p-2 text-sm">
+                  {displayFacts.map(({ fact, originalIndex }) => (
+                    <li key={`${fact.text}-${originalIndex}`} className="flex items-start gap-2 rounded-lg border bg-card/60 p-2 text-sm">
                       <div className="min-w-0 flex-1">
                         <div className="whitespace-pre-wrap break-words">{fact.text}</div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          Độ tin cậy {(fact.confidence * 100).toFixed(0)}% · {expiresLabel(fact.expiresAt)}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <span>Độ tin cậy {(fact.confidence * 100).toFixed(0)}%</span>
+                          <span>·</span>
+                          <span>{expiresLabel(fact.expiresAt)}</span>
+                          {isExpiringSoon(fact.expiresAt) && (
+                            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                              sắp hết hạn
+                            </span>
+                          )}
+                          {fact.confidence < 0.6 && (
+                            <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-700 dark:text-sky-300">
+                              tin cậy thấp
+                            </span>
+                          )}
                         </div>
                       </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeFact(index)}
+                        onClick={() => removeFact(originalIndex)}
                         className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
                         aria-label="Xoá sự thật"
                       >
