@@ -79,6 +79,8 @@ export function MessageBubble({
   const showContinue = isLastAssistant && !!onContinue && (wasTruncated ?? isLikelyTruncated(content))
   const assistantMessageRef = useRef<HTMLDivElement>(null)
   const [quoteButton, setQuoteButton] = useState<QuoteButtonState | null>(null)
+  const touchActionTimeoutRef = useRef<number | null>(null)
+  const [touchActionsVisible, setTouchActionsVisible] = useState(false)
 
   useEffect(() => {
     if (isUser) return
@@ -93,6 +95,19 @@ export function MessageBubble({
     document.addEventListener("selectionchange", handleSelectionChange)
     return () => document.removeEventListener("selectionchange", handleSelectionChange)
   }, [isUser])
+
+  useEffect(
+    () => () => {
+      if (touchActionTimeoutRef.current !== null) window.clearTimeout(touchActionTimeoutRef.current)
+    },
+    []
+  )
+
+  function revealActionsForTouch() {
+    setTouchActionsVisible(true)
+    if (touchActionTimeoutRef.current !== null) window.clearTimeout(touchActionTimeoutRef.current)
+    touchActionTimeoutRef.current = window.setTimeout(() => setTouchActionsVisible(false), 2800)
+  }
 
   function showQuoteButtonForSelection() {
     const selection = window.getSelection()
@@ -141,7 +156,7 @@ export function MessageBubble({
   if (isUser) {
     if (editing) {
       return (
-        <div className="fade-up flex justify-end">
+        <div className="fade-up flex justify-end" onTouchStart={revealActionsForTouch}>
           <div className="flex w-full max-w-[85%] flex-col gap-2">
             <textarea
               autoFocus
@@ -178,13 +193,18 @@ export function MessageBubble({
       )
     }
     return (
-      <div className="fade-up flex justify-end">
+      <div className="fade-up flex justify-end" onTouchStart={revealActionsForTouch}>
         <div className="group flex max-w-[85%] items-start gap-3">
           <div className="flex flex-col items-end gap-1">
             <div className="rounded-2xl rounded-tr-md bg-muted/60 px-4 py-2.5 text-[15px] leading-relaxed">
               <p className="whitespace-pre-wrap">{content}</p>
             </div>
-            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <div
+              className={cn(
+                "flex items-center gap-1 transition-opacity",
+                touchActionsVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              )}
+            >
               {onEdit && (
                 <ActionIcon
                   label="Chỉnh sửa"
@@ -208,7 +228,7 @@ export function MessageBubble({
   }
 
   return (
-    <div className="fade-up group flex gap-4">
+    <div className="fade-up group flex gap-4" onTouchStart={revealActionsForTouch}>
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-gradient-to-br from-violet-500/20 via-fuchsia-500/20 to-orange-500/20">
         <Sparkles className="h-4 w-4 text-foreground" />
       </div>
@@ -328,7 +348,12 @@ export function MessageBubble({
 
         {content && !showCursor && (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+            <div
+              className={cn(
+                "flex items-center gap-0.5 transition-opacity",
+                touchActionsVisible ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+              )}
+            >
               <CopyAction text={content} />
               {isLastAssistant && onRegenerate && (
                 <ActionIcon label="Tạo lại câu trả lời" onClick={onRegenerate}>

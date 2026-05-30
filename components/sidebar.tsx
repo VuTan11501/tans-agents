@@ -315,8 +315,26 @@ export function Sidebar({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Tìm tiêu đề hoặc nội dung…"
-              className="h-9 pl-8 text-sm"
+              className="h-9 pl-8 pr-8 text-sm"
             />
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className={cn(
+                "absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors",
+                q.trim() ? "hover:bg-muted hover:text-foreground" : "pointer-events-none opacity-0"
+              )}
+              aria-label="Xóa từ khóa tìm kiếm"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="min-h-4 px-1 text-[11px] text-muted-foreground">
+            {q.trim()
+              ? `Kết quả: ${filtered.length}/${sessions.length}`
+              : activeTag
+              ? `Đang lọc nhãn: ${activeTag}`
+              : ""}
           </div>
         </div>
 

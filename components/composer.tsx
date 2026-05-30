@@ -142,6 +142,13 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
   const showSlash = slashMatches.length > 0
   const composedValue = quotedText ? formatQuotedMessage(quotedText, value) : value
   const canSubmit = (!!value.trim() || !!quotedText || files.length > 0) && !disabled && !isRagPrefetching && !isGeneratingImage
+  const composerStatus = isGeneratingImage
+    ? "Đang tạo ảnh AI…"
+    : isRagPrefetching
+    ? "Đang lấy ngữ cảnh tài liệu…"
+    : voiceListening
+    ? "Đang nghe giọng nói…"
+    : null
   const contextUsage = useMemo(() => {
     const used = messages.reduce((sum, message) => {
       return sum + countTokens(typeof message.content === "string" ? message.content : "")
@@ -487,6 +494,14 @@ export function Composer({ value, onChange, onSubmit, onStop, isStreaming, disab
             })}
           </div>
         )}
+
+        <div className="mb-1 min-h-[20px] pr-2 text-[11px]">
+          {composerStatus && (
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-muted-foreground">
+              {composerStatus}
+            </span>
+          )}
+        </div>
 
         <div className="flex items-end gap-2">
           <div ref={inputWrapRef} className={cn("min-w-0 flex-1", markdownPreviewOpen && "grid grid-cols-1 gap-2 md:grid-cols-2")}>

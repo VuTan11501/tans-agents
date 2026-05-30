@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 type CommandItem = {
   href: string
@@ -75,20 +75,26 @@ function normalize(value: string) {
 
 export function CommandPalette({ open = false }: CommandPaletteProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isOpen, setIsOpen] = useState(open)
   const [query, setQuery] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const hotkeyLabel = useMemo(() => {
+    if (typeof navigator === "undefined") return "Ctrl + K"
+    return /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform) ? "⌘K" : "Ctrl + K"
+  }, [])
+  const triggerBottom = pathname === "/" ? "calc(env(safe-area-inset-bottom) + 5.5rem)" : "calc(env(safe-area-inset-bottom) + 1rem)"
 
-  useEffect(() => {
-    setIsOpen(open)
-  }, [open])
+  function openPalette() {
+    setIsOpen(true)
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
-        setIsOpen(true)
+        openPalette()
       }
     }
 
@@ -151,7 +157,22 @@ export function CommandPalette({ open = false }: CommandPaletteProps) {
     }
   }
 
-  if (!isOpen) return null
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        onClick={openPalette}
+        className="fixed left-4 z-40 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/95 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur transition hover:bg-muted"
+        style={{ bottom: triggerBottom }}
+        aria-label={`Mở command palette (${hotkeyLabel})`}
+      >
+        <span className="rounded-full border border-border/60 bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none">
+          {hotkeyLabel}
+        </span>
+        <span className="hidden sm:inline">Mở nhanh</span>
+      </button>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 p-4 backdrop-blur" onClick={close} onKeyDown={handlePaletteKeyDown}>
