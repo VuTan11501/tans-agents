@@ -13,6 +13,7 @@ export const SYNC_KEYS: Record<SyncScope, string[]> = {
   settings: [
     "tans:provider-model",
     "tans:ab",
+    "tans:auto-profile",
     "tans:density",
     "tans-agents:accent-color",
     "tans:self-critique",
@@ -21,6 +22,8 @@ export const SYNC_KEYS: Record<SyncScope, string[]> = {
     "tans-agents:prompts",
     "tans-agents:memory",
     "tans-agents:snippets",
+    "tans-agents:active-workspace-pack",
+    "tans-agents:playbook-context",
     "tans:composer:preview",
     "tans:voice-mode:on",
     "tans:voice-mode:lang",

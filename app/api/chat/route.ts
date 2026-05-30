@@ -1,16 +1,11 @@
 import { createDataStreamResponse, formatDataStreamPart, streamText } from "ai"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createGroq } from "@ai-sdk/groq"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createMistral } from "@ai-sdk/mistral"
 import { agentTools } from "@/lib/tools"
-import { PROVIDERS, type ProviderKey } from "@/lib/providers"
-import { routeModel } from "@/lib/router"
 import { compactMessagesIfNeeded } from "@/lib/compactor"
 import { selfCritiqueResponse, shouldSelfCritique } from "@/lib/critique"
 import { recordProviderRateLimit } from "@/lib/usage-tracker"
 import { parseRateLimitHeaders } from "@/lib/rate-limit-headers"
-import type { UserKeys } from "@/lib/user-keys"
+import { parseChatRequest } from "@/lib/chat-request"
+import { getCompactionModel, getModel, resolveProviderAndModel } from "@/lib/chat-runtime"
 
 export const runtime = "edge"
 export const maxDuration = 60
@@ -29,117 +24,55 @@ const SYSTEM_PROMPT =
   "- Vẽ biểu đồ: chartGen. Vẽ sơ đồ flow/sequence: mermaid.\n" +
   "- KHÔNG đoán mò khi câu trả lời có thể outdated — luôn dùng tool để xác thực."
 
-function getUserApiKey(provider: ProviderKey, userKeys?: UserKeys) {
-  if (!userKeys || typeof userKeys !== "object") return undefined
-  if (provider === "ollama") return undefined
-
-  const key = provider === "google" ? userKeys.gemini : userKeys[provider]
-  return typeof key === "string" && key.trim() ? key.trim() : undefined
-}
-
-function getOllamaBaseUrl(userKeys?: UserKeys) {
-  const raw = userKeys?.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434"
-  return raw.replace(/\/+$/, "")
-}
-
-function providerForModel(modelId: string): ProviderKey | undefined {
-  return (Object.entries(PROVIDERS) as Array<[ProviderKey, (typeof PROVIDERS)[ProviderKey]]>).find(([, config]) =>
-    (config.models as readonly string[]).includes(modelId)
-  )?.[0]
-}
-
-function hasApiKey(provider: ProviderKey, userKeys?: UserKeys) {
-  if (getUserApiKey(provider, userKeys)) return true
-  if (provider === "google") return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY)
-  if (provider === "groq") return Boolean(process.env.GROQ_API_KEY)
-  if (provider === "github") return Boolean(process.env.GITHUB_TOKEN)
-  if (provider === "openrouter") return Boolean(process.env.OPENROUTER_API_KEY)
-  if (provider === "cerebras") return Boolean(process.env.CEREBRAS_API_KEY)
-  if (provider === "mistral") return Boolean(process.env.MISTRAL_API_KEY)
-  if (provider === "ollama") return true
-  return false
-}
-
-function getModel(provider: ProviderKey, modelId: string, userKeys?: UserKeys) {
-  const userApiKey = getUserApiKey(provider, userKeys)
-
-  if (provider === "google") {
-    const apiKey = userApiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    if (!apiKey) throw new Error("Missing GOOGLE_GENERATIVE_AI_API_KEY")
-    return createGoogleGenerativeAI({ apiKey })(modelId)
+function errorText(error: unknown): string {
+  if (error == null) return "Unknown error"
+  if (typeof error === "string") return error
+  if (error instanceof Error) return error.message
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
   }
-  if (provider === "groq") {
-    const apiKey = userApiKey || process.env.GROQ_API_KEY
-    if (!apiKey) throw new Error("Missing GROQ_API_KEY")
-    return createGroq({ apiKey })(modelId)
-  }
-  if (provider === "github") {
-    const apiKey = userApiKey || process.env.GITHUB_TOKEN
-    if (!apiKey) throw new Error("Missing GITHUB_TOKEN")
-    return createOpenAI({ apiKey, baseURL: "https://models.inference.ai.azure.com" })(modelId)
-  }
-  if (provider === "openrouter") {
-    const apiKey = userApiKey || process.env.OPENROUTER_API_KEY
-    if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY")
-    return createOpenAI({
-      apiKey,
-      baseURL: "https://openrouter.ai/api/v1",
-      headers: {
-        // OpenRouter recommends these for analytics/leaderboards (optional).
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://tans-agents",
-        "X-Title": "Tan's Agents",
-      },
-    })(modelId)
-  }
-  if (provider === "cerebras") {
-    const apiKey = userApiKey || process.env.CEREBRAS_API_KEY
-    if (!apiKey) throw new Error("Missing CEREBRAS_API_KEY")
-    return createOpenAI({ apiKey, baseURL: "https://api.cerebras.ai/v1" })(modelId)
-  }
-  if (provider === "mistral") {
-    const apiKey = userApiKey || process.env.MISTRAL_API_KEY
-    if (!apiKey) throw new Error("Missing MISTRAL_API_KEY")
-    return createMistral({ apiKey })(modelId)
-  }
-  if (provider === "ollama") {
-    return createOpenAI({ apiKey: "ollama", baseURL: `${getOllamaBaseUrl(userKeys)}/v1` })(modelId)
-  }
-  throw new Error(`Unknown provider: ${provider}`)
-}
-
-function getCompactionModel(userKeys?: UserKeys) {
-  if (hasApiKey("groq", userKeys)) return getModel("groq", "llama-3.1-8b-instant", userKeys)
-  if (hasApiKey("google", userKeys)) return getModel("google", "gemini-2.5-flash-lite", userKeys)
-  return undefined
 }
 
 export async function POST(req: Request) {
   try {
-    const { messages, provider, model, enabledTools, userKeys, auto } = await req.json()
-    const autoRoute = model === "auto" || (!model && auto === true) ? routeModel(messages) : undefined
-    const requestedProvider = (provider || "google") as ProviderKey
-    const p = autoRoute ? providerForModel(autoRoute.modelId) ?? requestedProvider : requestedProvider
-    const m = autoRoute?.modelId || model || PROVIDERS[p].default
+    const body = parseChatRequest(await req.json())
+    const { messages, enabledTools, userKeys, autoProfile } = body
+    const resolved = resolveProviderAndModel({
+      messages,
+      provider: body.provider,
+      model: body.model,
+      auto: body.auto,
+      autoProfile,
+      userKeys,
+    })
+    const p = resolved.provider
+    const m = resolved.model
+
     const autoCompact = req.headers.get("X-Auto-Compact") === "1"
     const selfCritique = req.headers.get("X-Self-Critique") === "1"
     const compacted = autoCompact
-      ? await compactMessagesIfNeeded({ messages, modelId: m, compactModel: getCompactionModel(userKeys) })
+      ? await compactMessagesIfNeeded({
+          messages,
+          modelId: m,
+          compactModel: getCompactionModel(userKeys),
+        })
       : undefined
     const finalMessages = compacted?.messages ?? messages
     const tools = Array.isArray(enabledTools)
       ? Object.fromEntries(Object.entries(agentTools).filter(([name]) => enabledTools.includes(name)))
       : agentTools
+
     const modelInstance = getModel(p, m, userKeys)
-    // Gemini 2.5 thinking-mode models require a `thought_signature` field on
-    // every echoed function call in conversation history. AI SDK can't preserve
-    // it across multi-step tool calls → "Function call is missing a thought_signature"
-    // on step 2. Disable thinking when tools are enabled to avoid this entirely.
-    // (For pure text generation thinking is fine; toggle here only if tools list is non-empty.)
+    // Gemini 2.5 thinking-mode models require `thought_signature` on echoed tool calls.
+    // AI SDK cannot preserve it across multi-step tool loops, so disable thinking when tools are on.
     const hasTools = Object.keys(tools).length > 0
     const googleProviderOptions =
       p === "google" && hasTools
         ? { google: { thinkingConfig: { thinkingBudget: 0, includeThoughts: false } } }
         : undefined
+
     const result = streamText({
       model: modelInstance,
       system: SYSTEM_PROMPT,
@@ -148,38 +81,37 @@ export async function POST(req: Request) {
       maxSteps: 5,
       ...(googleProviderOptions ? { providerOptions: googleProviderOptions } : {}),
       onError({ error }) {
-        // surface model/SDK errors to server logs so they're not silently swallowed
         console.error("[chat] streamText error:", error)
       },
       onFinish({ finishReason, usage, response }) {
         console.log("[chat] streamText finish:", { finishReason, usage })
-        // Read REAL rate-limit info from provider response headers (Groq + GitHub).
-        // Google Gemini doesn't expose these headers → returns null, no-op.
         try {
           const headers = (response as { headers?: Headers | Record<string, string> } | undefined)?.headers
           const info = parseRateLimitHeaders(p, headers)
-          if (info) {
-            void recordProviderRateLimit(p, m, info, userKeys).catch(() => {})
-          }
+          if (info) void recordProviderRateLimit(p, m, info, userKeys).catch(() => {})
         } catch {
-          /* never let telemetry errors propagate */
+          // telemetry failure must not affect chat stream
         }
       },
     })
+
     const headers = {
-      ...(autoRoute
+      ...(resolved.autoRoute
         ? {
-            "X-Auto-Model": autoRoute.modelId,
-            "X-Auto-Reason": encodeURIComponent(autoRoute.reason),
+            "X-Auto-Model": resolved.autoRoute.modelId,
+            "X-Auto-Reason": encodeURIComponent(resolved.autoRoute.reason),
+            "X-Auto-Profile": resolved.autoRoute.profile,
           }
         : {}),
+      ...(resolved.fallback
+        ? {
+            "X-Fallback-From": resolved.fallback.fromProvider,
+            "X-Fallback-To": resolved.fallback.toProvider,
+          }
+        : {}),
+      "X-Resolved-Provider": p,
+      "X-Resolved-Model": m,
       ...(compacted?.compacted ? { "X-Auto-Compacted": "1" } : {}),
-    }
-    const getErrorMessage = (error: unknown) => {
-      if (error == null) return "Unknown error"
-      if (typeof error === "string") return error
-      if (error instanceof Error) return error.message
-      try { return JSON.stringify(error) } catch { return String(error) }
     }
 
     if (!selfCritique) {
@@ -187,7 +119,7 @@ export async function POST(req: Request) {
         headers,
         sendUsage: true,
         sendReasoning: false,
-        getErrorMessage,
+        getErrorMessage: errorText,
       })
     }
 
@@ -199,11 +131,13 @@ export async function POST(req: Request) {
           sendReasoning: false,
           experimental_sendFinish: false,
         })
+
         const [response, finishReason, usage] = await Promise.all([
           result.text,
           result.finishReason,
           result.usage,
         ])
+
         if (shouldSelfCritique(response)) {
           const improved = await selfCritiqueResponse({
             model: getModel(p, m, userKeys),
@@ -212,6 +146,7 @@ export async function POST(req: Request) {
           })
           dataStream.write(formatDataStreamPart("text", `\n\n---\n**Đã tự đánh giá:**\n${improved}`))
         }
+
         dataStream.write(
           formatDataStreamPart("finish_message", {
             finishReason,
@@ -222,10 +157,10 @@ export async function POST(req: Request) {
           })
         )
       },
-      onError: getErrorMessage,
+      onError: errorText,
     })
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e?.message || "internal error" }), {
+  } catch (error: unknown) {
+    return new Response(JSON.stringify({ error: errorText(error) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })

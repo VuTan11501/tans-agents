@@ -1,3 +1,5 @@
+import { getWorkspacePackById, readActiveWorkspacePackId } from "@/lib/workspace-packs"
+
 export type PromptTemplateCategory = 'writing' | 'coding' | 'learning' | 'business' | 'other'
 
 export interface PromptTemplate {
@@ -12,6 +14,7 @@ export interface PromptTemplate {
 }
 
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'tans-agents:prompt-templates-v1'
+export const PROMPT_PLAYBOOK_CONTEXT_KEY = 'tans-agents:playbook-context'
 
 export const PROMPT_TEMPLATE_CATEGORIES: Array<{ value: PromptTemplateCategory | 'all'; label: string }> = [
   { value: 'all', label: 'Tất cả' },
@@ -138,6 +141,26 @@ export const BUILTIN_PROMPT_TEMPLATES: PromptTemplate[] = [
     isBuiltin: true,
     body: 'Phân tích SWOT cho: {{subject}}. Mỗi nhóm 3-5 điểm.',
   }),
+  withVariables({
+    id: 'builtin-playbook-implementation',
+    title: 'Playbook triển khai task',
+    category: 'coding',
+    icon: '🧩',
+    isBuiltin: true,
+    body:
+      'Dự án: {{repo}}\nTicket: {{ticket}}\nMục tiêu: {{goal}}\nStack: {{stack}}\n\n' +
+      'Hãy đề xuất kế hoạch triển khai chi tiết, chia step nhỏ, nêu rủi ro và checklist kiểm thử.',
+  }),
+  withVariables({
+    id: 'builtin-playbook-review',
+    title: 'Playbook review trước merge',
+    category: 'coding',
+    icon: '🛡️',
+    isBuiltin: true,
+    body:
+      'Repo: {{repo}}\nPR/Ticket: {{ticket}}\nGoal: {{goal}}\nStack: {{stack}}\n\n' +
+      'Review thay đổi theo hướng bug/security/perf, liệt kê vấn đề theo mức độ và đề xuất fix cụ thể.',
+  }),
 ]
 
 function canUseStorage(): boolean {
@@ -207,4 +230,28 @@ export function fillPromptTemplate(body: string, values: Record<string, string>)
     const value = values[variable]?.trim()
     return value ? value : placeholder
   })
+}
+
+export function getPromptVariableDefaults(): Record<string, string> {
+  if (!canUseStorage()) return {}
+  const workspacePack = getWorkspacePackById(readActiveWorkspacePackId())
+  let context: Record<string, string> = {}
+  try {
+    const raw = window.localStorage.getItem(PROMPT_PLAYBOOK_CONTEXT_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        const entries = Object.entries(parsed as Record<string, unknown>).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string'
+        )
+        context = Object.fromEntries(entries)
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return {
+    ...(workspacePack?.promptDefaults ?? {}),
+    ...context,
+  }
 }

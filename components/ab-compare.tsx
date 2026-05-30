@@ -22,12 +22,80 @@ interface AbCompareProps {
 }
 
 export function AbCompare({ a, b, onPick }: AbCompareProps) {
+  const canDiff = a.done && b.done && !a.error && !b.error && a.content.trim() && b.content.trim()
+  const diff = canDiff ? summarizeDiff(a.content, b.content) : null
+
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <AbCard label="Mô hình A" state={a} onPick={() => onPick("a")} />
-      <AbCard label="Mô hình B" state={b} onPick={() => onPick("b")} />
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <AbCard label="Mô hình A" state={a} onPick={() => onPick("a")} />
+        <AbCard label="Mô hình B" state={b} onPick={() => onPick("b")} />
+      </div>
+      {diff && (
+        <Card className="border-border/70 bg-card/80">
+          <CardHeader className="space-y-2 border-b border-border/60 p-3">
+            <p className="text-sm font-semibold">So sánh nhanh A/B</p>
+            <p className="text-xs text-muted-foreground">
+              Độ tương đồng nội dung: <span className="font-medium">{diff.similarity}%</span>
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-3 p-3 md:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Ý chỉ có ở A</p>
+              <ScrollArea className="max-h-40 rounded-md border border-border/60 p-2">
+                <ul className="space-y-1 text-xs">
+                  {diff.onlyA.length === 0 ? (
+                    <li className="text-muted-foreground">Không có</li>
+                  ) : (
+                    diff.onlyA.map((line, index) => (
+                      <li key={`a-${index}`} className="break-words [overflow-wrap:anywhere]">
+                        • {line}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </ScrollArea>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Ý chỉ có ở B</p>
+              <ScrollArea className="max-h-40 rounded-md border border-border/60 p-2">
+                <ul className="space-y-1 text-xs">
+                  {diff.onlyB.length === 0 ? (
+                    <li className="text-muted-foreground">Không có</li>
+                  ) : (
+                    diff.onlyB.map((line, index) => (
+                      <li key={`b-${index}`} className="break-words [overflow-wrap:anywhere]">
+                        • {line}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </ScrollArea>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
+}
+
+function summarizeDiff(contentA: string, contentB: string) {
+  const linesA = contentA
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const linesB = contentB
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const setA = new Set(linesA)
+  const setB = new Set(linesB)
+  const onlyA = linesA.filter((line) => !setB.has(line)).slice(0, 8)
+  const onlyB = linesB.filter((line) => !setA.has(line)).slice(0, 8)
+  const unionSize = new Set([...setA, ...setB]).size || 1
+  const intersection = [...setA].filter((line) => setB.has(line)).length
+  const similarity = Math.round((intersection / unionSize) * 100)
+  return { onlyA, onlyB, similarity }
 }
 
 function AbCard({ label, state, onPick }: { label: string; state: AbPaneState; onPick: () => void }) {

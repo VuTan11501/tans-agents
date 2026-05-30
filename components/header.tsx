@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { PersonaPicker } from "@/components/persona-picker"
 import { ModelPicker } from "@/components/model-picker"
+import { WorkspacePackPicker } from "@/components/workspace-pack-picker"
 import { CollectionsDialog } from "@/components/collections-dialog"
 import { SnippetsDialog } from "@/components/snippets-dialog"
 import { ThemeCustomizer } from "@/components/theme-customizer"
@@ -34,6 +35,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiKeysDialog } from "@/components/api-keys-dialog"
 import { PERSONAS, getPersona, type PersonaId } from "@/lib/personas"
 import { type ProviderKey } from "@/lib/providers"
+import type { AutoRouteProfile } from "@/lib/router"
+import { WORKSPACE_PACKS } from "@/lib/workspace-packs"
 import { cn } from "@/lib/utils"
 import { hasAnyUserKey, type UserKeyProvider, type UserKeys } from "@/lib/user-keys"
 
@@ -41,8 +44,12 @@ interface HeaderProps {
   provider: ProviderKey
   model: string
   persona: PersonaId
+  autoProfile: AutoRouteProfile
+  workspacePackId: string
   onChange: (p: ProviderKey, m: string) => void
   onPersonaChange: (persona: PersonaId) => void
+  onAutoProfileChange: (profile: AutoRouteProfile) => void
+  onWorkspacePackChange: (workspacePackId: string) => void
   onNewChat: () => void
   canNewChat: boolean
   onOpenMenu: () => void
@@ -58,8 +65,12 @@ export function Header({
   provider,
   model,
   persona,
+  autoProfile,
+  workspacePackId,
   onChange,
   onPersonaChange,
+  onAutoProfileChange,
+  onWorkspacePackChange,
   onNewChat,
   canNewChat,
   onOpenMenu,
@@ -124,6 +135,10 @@ export function Header({
           {/* Persona picker — hidden on mobile (emoji shown inside model picker; full picker in overflow menu) */}
           <div className="hidden sm:block">
             <PersonaPicker value={persona} onChange={onPersonaChange} />
+          </div>
+
+          <div className="hidden lg:block">
+            <WorkspacePackPicker value={workspacePackId} onChange={onWorkspacePackChange} />
           </div>
         </div>
 
@@ -190,6 +205,33 @@ export function Header({
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator className="sm:hidden" />
+                <DropdownMenuLabel>Auto routing profile</DropdownMenuLabel>
+                {(["speed", "balanced", "quality"] as const).map((profile) => (
+                  <DropdownMenuItem
+                    key={profile}
+                    onClick={() => onAutoProfileChange(profile)}
+                    className={cn("capitalize", autoProfile === profile && "bg-accent")}
+                  >
+                    <span className="mr-2">{profile === "speed" ? "⚡" : profile === "balanced" ? "⚖️" : "🏆"}</span>
+                    <span className="flex-1">
+                      {profile === "speed" ? "Nhanh" : profile === "balanced" ? "Cân bằng" : "Chất lượng"}
+                    </span>
+                    {autoProfile === profile && <Check className="h-3 w-3" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="lg:hidden">Workspace Pack</DropdownMenuLabel>
+                {WORKSPACE_PACKS.map((pack) => (
+                  <DropdownMenuItem
+                    key={pack.id}
+                    onClick={() => onWorkspacePackChange(pack.id)}
+                    className={cn("lg:hidden", pack.id === workspacePackId && "bg-accent")}
+                  >
+                    <span className="flex-1">{pack.label}</span>
+                    {pack.id === workspacePackId && <Check className="h-3 w-3" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator className="lg:hidden" />
                 <DropdownMenuItem onClick={onOpenMemory}>
                   <Brain className="mr-2 h-4 w-4" /> Bộ nhớ
                 </DropdownMenuItem>

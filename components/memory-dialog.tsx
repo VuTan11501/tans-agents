@@ -12,9 +12,24 @@ interface MemoryDialogProps {
   onOpenChange: (open: boolean) => void
   memory: MemoryState
   setAbout: (about: string) => void
-  addFact: (fact: string) => void
+  addFact: (fact: string, options?: { confidence?: number; expiresInDays?: number | null }) => void
   removeFact: (index: number) => void
   clearAll: () => void
+}
+
+const CONFIDENCE_OPTIONS = [
+  { value: 0.4, label: "Thấp" },
+  { value: 0.7, label: "Vừa" },
+  { value: 0.9, label: "Cao" },
+]
+
+function expiresLabel(expiresAt?: number) {
+  if (!expiresAt) return "Không hết hạn"
+  try {
+    return `Hết hạn: ${new Date(expiresAt).toLocaleDateString("vi-VN")}`
+  } catch {
+    return "Có hết hạn"
+  }
 }
 
 export function MemoryDialog({
@@ -27,10 +42,18 @@ export function MemoryDialog({
   clearAll,
 }: MemoryDialogProps) {
   const [draftFact, setDraftFact] = useState("")
+  const [draftConfidence, setDraftConfidence] = useState(0.7)
+  const [draftExpiryDays, setDraftExpiryDays] = useState("")
 
   function handleAddFact() {
-    addFact(draftFact)
+    const expiresInDays = draftExpiryDays.trim() ? Number(draftExpiryDays) : null
+    addFact(draftFact, {
+      confidence: draftConfidence,
+      expiresInDays: Number.isFinite(expiresInDays as number) ? (expiresInDays as number) : null,
+    })
     setDraftFact("")
+    setDraftExpiryDays("")
+    setDraftConfidence(0.7)
   }
 
   return (
@@ -40,7 +63,7 @@ export function MemoryDialog({
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border bg-background p-5 shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] duration-200">
           <Dialog.Title className="text-base font-semibold">🧠 Bộ nhớ</Dialog.Title>
           <Dialog.Description className="mt-1 text-xs text-muted-foreground">
-            Lưu thông tin dài hạn để agent cá nhân hoá câu trả lời. Dữ liệu chỉ nằm trong localStorage của trình duyệt này.
+            Lưu thông tin dài hạn để agent cá nhân hoá câu trả lời. Dữ liệu chỉ nằm trong trình duyệt này.
           </Dialog.Description>
 
           <div className="mt-4 space-y-4 overflow-y-auto pr-1">
@@ -64,7 +87,7 @@ export function MemoryDialog({
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="space-y-2 rounded-lg border bg-card/40 p-2">
                 <input
                   value={draftFact}
                   onChange={(event) => setDraftFact(event.target.value)}
@@ -75,11 +98,39 @@ export function MemoryDialog({
                     }
                   }}
                   placeholder="Thêm một sự thật..."
-                  className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-9 min-w-0 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <Button type="button" size="sm" onClick={handleAddFact} disabled={!draftFact.trim()} aria-label="Thêm sự thật">
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    Độ tin cậy
+                    <select
+                      value={draftConfidence}
+                      onChange={(event) => setDraftConfidence(Number(event.target.value))}
+                      className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      {CONFIDENCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    Hết hạn sau (ngày)
+                    <input
+                      type="number"
+                      min={1}
+                      value={draftExpiryDays}
+                      onChange={(event) => setDraftExpiryDays(event.target.value)}
+                      placeholder="VD: 30"
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                    />
+                  </label>
+                  <Button type="button" size="sm" onClick={handleAddFact} disabled={!draftFact.trim()} aria-label="Thêm sự thật">
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Thêm
+                  </Button>
+                </div>
               </div>
 
               {memory.facts.length === 0 ? (
@@ -89,8 +140,13 @@ export function MemoryDialog({
               ) : (
                 <ul className="space-y-2">
                   {memory.facts.map((fact, index) => (
-                    <li key={`${fact}-${index}`} className="flex items-start gap-2 rounded-lg border bg-card/60 p-2 text-sm">
-                      <span className="min-w-0 flex-1 whitespace-pre-wrap">{fact}</span>
+                    <li key={`${fact.text}-${index}`} className="flex items-start gap-2 rounded-lg border bg-card/60 p-2 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="whitespace-pre-wrap break-words">{fact.text}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          Độ tin cậy {(fact.confidence * 100).toFixed(0)}% · {expiresLabel(fact.expiresAt)}
+                        </div>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"

@@ -41,9 +41,10 @@ import {
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { downloadBlob, safeFilename, sessionToJSON, sessionToMarkdown } from "@/lib/export"
-import { TOOL_NAMES } from "@/lib/tools"
+import { TOOL_LABELS, TOOL_NAMES } from "@/lib/tools"
 import {
   setSessionEnabledTools,
+  setSessionSmartRetry,
   setSessionTags,
   togglePinnedSession,
   type ChatSession,
@@ -62,6 +63,8 @@ interface SidebarProps {
   onClearAll: () => void
   trigger: ReactNode
 }
+
+const SENSITIVE_TOOLS = ["runPython", "runJs", "runSql", "fetchUrl", "githubQuery"] as const
 
 function timeAgo(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -369,6 +372,7 @@ function SessionItem({
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [toolDraft, setToolDraft] = useState<string[]>(() => [...(session.enabledTools ?? TOOL_NAMES)])
+  const [smartRetryDraft, setSmartRetryDraft] = useState(session.smartRetry !== false)
 
   function handleSetTags() {
     const input = prompt("Nhập nhãn, phân tách bằng dấu phẩy", (session.tags ?? []).join(", "))
@@ -389,7 +393,7 @@ function SessionItem({
       const response = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session }),
+        body: JSON.stringify({ session, redact: true }),
       })
 
       if (!response.ok) throw new Error("Share request failed")
@@ -411,6 +415,7 @@ function SessionItem({
 
   function openToolsDialog() {
     setToolDraft([...(session.enabledTools ?? TOOL_NAMES)])
+    setSmartRetryDraft(session.smartRetry !== false)
     setToolsOpen(true)
   }
 
@@ -421,8 +426,22 @@ function SessionItem({
   }
 
   function saveTools() {
+    const currentTools = session.enabledTools ?? TOOL_NAMES
+    const newlyEnabledSensitive = SENSITIVE_TOOLS.filter(
+      (toolName) => toolDraft.includes(toolName) && !currentTools.includes(toolName)
+    )
+    if (newlyEnabledSensitive.length > 0) {
+      const labels = newlyEnabledSensitive
+        .map((toolName) => TOOL_LABELS[toolName] ?? toolName)
+        .join(", ")
+      const confirmed = window.confirm(
+        `Bạn đang bật tool nhạy cảm: ${labels}.\nCác tool này có thể gọi code/URL/API bên ngoài.\nTiếp tục?`
+      )
+      if (!confirmed) return
+    }
     const enabledTools = toolDraft.length === TOOL_NAMES.length ? undefined : toolDraft
     setSessionEnabledTools(session.id, enabledTools)
+    setSessionSmartRetry(session.id, smartRetryDraft ? undefined : false)
     setToolsOpen(false)
   }
 
@@ -632,10 +651,28 @@ function SessionItem({
                   onChange={() => toggleTool(toolName)}
                   className="h-4 w-4 rounded border-border accent-primary"
                 />
-                <span className="font-mono text-xs">{toolName}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="text-xs font-medium">{TOOL_LABELS[toolName as keyof typeof TOOL_LABELS] ?? toolName}</span>
+                  <span className="ml-2 font-mono text-[10px] text-muted-foreground">{toolName}</span>
+                </span>
+                {SENSITIVE_TOOLS.includes(toolName as (typeof SENSITIVE_TOOLS)[number]) && (
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                    nhạy cảm
+                  </span>
+                )}
               </label>
             ))}
           </div>
+
+          <label className="mt-3 flex items-center justify-between rounded-md border border-border/60 px-3 py-2 text-sm">
+            <span>Smart Retry khi timeout/rate limit</span>
+            <input
+              type="checkbox"
+              checked={smartRetryDraft}
+              onChange={(event) => setSmartRetryDraft(event.target.checked)}
+              className="h-4 w-4 rounded border-border accent-primary"
+            />
+          </label>
 
           <div className="mt-4 flex items-center justify-between gap-2">
             <Button variant="ghost" size="sm" onClick={() => setToolDraft([...TOOL_NAMES])}>

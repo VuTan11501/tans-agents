@@ -20,6 +20,7 @@ import { AbToggle, type AbModeState } from "@/components/ab-toggle"
 import { PROVIDERS, type ProviderKey } from "@/lib/providers"
 import type { PersonaId } from "@/lib/personas"
 import { buildSystemPrompt } from "@/lib/system-prompt"
+import { DEFAULT_AUTO_ROUTE_PROFILE, getProviderFallbackOrder, isRetryableError, type AutoRouteProfile } from "@/lib/router"
 import { useChatHistory, deriveTitle } from "@/hooks/use-chat-history"
 import { useHotkeys } from "@/hooks/use-hotkeys"
 import { extractFileText, fileToAttachment, isImageFile } from "@/lib/upload"
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils"
 import type { PromptItem } from "@/hooks/use-prompts"
 import { generateTitle } from "@/lib/auto-title"
 import { extractFactsFromMessage } from "@/lib/auto-memory"
+import { DEFAULT_WORKSPACE_PACK_ID, getWorkspacePack, readActiveWorkspacePackId, writeActiveWorkspacePackId } from "@/lib/workspace-packs"
 
 function newId() {
   return (
@@ -58,6 +60,7 @@ type ActiveAbCompare = {
 
 const AB_STORAGE_KEY = "tans:ab"
 const MODEL_STORAGE_KEY = "tans:provider-model"
+const AUTO_PROFILE_STORAGE_KEY = "tans:auto-profile"
 
 function readSavedProviderModel(): { provider: ProviderKey; model: string } {
   if (typeof window === "undefined") return { provider: "groq", model: PROVIDERS.groq.default }
@@ -72,10 +75,21 @@ function readSavedProviderModel(): { provider: ProviderKey; model: string } {
   return { provider: "groq", model: PROVIDERS.groq.default }
 }
 
+function readSavedAutoProfile(): AutoRouteProfile {
+  if (typeof window === "undefined") return DEFAULT_AUTO_ROUTE_PROFILE
+  const raw = window.localStorage.getItem(AUTO_PROFILE_STORAGE_KEY)
+  if (raw === "speed" || raw === "balanced" || raw === "quality") return raw
+  return DEFAULT_AUTO_ROUTE_PROFILE
+}
+
 export function Chat() {
   const [provider, setProvider] = useState<ProviderKey>(() => readSavedProviderModel().provider)
   const [model, setModel] = useState<string>(() => readSavedProviderModel().model)
   const [persona, setPersona] = useState<PersonaId>("default")
+  const [autoProfile, setAutoProfile] = useState<AutoRouteProfile>(() => readSavedAutoProfile())
+  const [workspacePackId, setWorkspacePackId] = useState<string>(
+    () => readActiveWorkspacePackId() ?? DEFAULT_WORKSPACE_PACK_ID
+  )
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
@@ -119,22 +133,37 @@ export function Chat() {
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLElement>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
+  const [retryHint, setRetryHint] = useState<string | null>(null)
   const skipNextPersistRef = useRef(false)
   const messagesRef = useRef<any[]>([])
   const abStreamRef = useRef<AbStreamHandle | null>(null)
+  const retryStateRef = useRef<{ attempts: number; inFlight: boolean }>({ attempts: 0, inFlight: false })
+  const lastErrorRef = useRef<string>("")
 
   const { memory, setAbout, addFact, removeFact, clearAll } = useMemory()
   const { keys: userKeys, setKey: setUserKey, clearAll: clearUserKeys } = useUserKeys()
+  const workspacePack = useMemo(() => getWorkspacePack(workspacePackId), [workspacePackId])
+  const memoryWithWorkspace = useMemo(
+    () => ({
+      about: memory.about.trim() || workspacePack.memoryAbout || "",
+      facts: [
+        ...(workspacePack.memoryFacts ?? []).map((text) => ({ text, confidence: 0.65 })),
+        ...memory.facts,
+      ],
+    }),
+    [memory.about, memory.facts, workspacePack.memoryAbout, workspacePack.memoryFacts]
+  )
   const personaSystemPrompt = useMemo(
-    () => buildSystemPrompt({ persona, memory }),
-    [persona, memory]
+    () => buildSystemPrompt({ persona, memory: memoryWithWorkspace }),
+    [memoryWithWorkspace, persona]
   )
   const history = useChatHistory()
   const currentSession = useMemo(
     () => history.sessions.find((session) => session.id === sessionId),
     [history.sessions, sessionId]
   )
-  const enabledTools = currentSession?.enabledTools
+  const enabledTools = currentSession?.enabledTools ?? workspacePack.enabledTools
+  const smartRetryEnabled = currentSession?.smartRetry !== false
   const effectiveAbEnabled = abMode.enabled && !ragActiveCollectionId
   const isAbLoading = !!activeAb && (!activeAb.a.done || !activeAb.b.done)
 
@@ -151,7 +180,18 @@ export function Chat() {
     append,
   } = useChat({
     api: "/api/chat",
-    body: { provider, model, userKeys, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+    body: {
+      provider,
+      model,
+      userKeys,
+      enabledTools,
+      autoProfile,
+      workspacePackId,
+      smartRetry: smartRetryEnabled,
+      persona,
+      memory: { about: memoryWithWorkspace.about, facts: memoryWithWorkspace.facts },
+      personaSystemPrompt,
+    },
     onError: (err) => {
       const lastMessage = [...messagesRef.current]
         .reverse()
@@ -165,6 +205,8 @@ export function Chat() {
     },
     onFinish: () => {
       window.dispatchEvent(new CustomEvent("tans:assistant-finished"))
+      retryStateRef.current = { attempts: 0, inFlight: false }
+      setRetryHint(null)
       
       // Auto-Title: After first user message AI response, generate title
       if (messagesRef.current.length === 2 && currentSession && !currentSession.title) {
@@ -184,7 +226,7 @@ export function Chat() {
       if (latestUserMessage && typeof latestUserMessage === "string") {
         extractFactsFromMessage({
           userMessage: latestUserMessage,
-          knownFacts: memory.facts?.map((f: any) => f.text) ?? [],
+          knownFacts: memory.facts?.map((fact) => fact.text) ?? [],
         }).catch(() => {
           // Silent failure for memory extraction
         })
@@ -216,6 +258,14 @@ export function Chat() {
   }, [abMode])
 
   useEffect(() => {
+    window.localStorage.setItem(AUTO_PROFILE_STORAGE_KEY, autoProfile)
+  }, [autoProfile])
+
+  useEffect(() => {
+    writeActiveWorkspacePackId(workspacePackId)
+  }, [workspacePackId])
+
+  useEffect(() => {
     const syncRag = () => setRagActiveCollectionId(getActiveCollectionId())
     window.addEventListener(RAG_ACTIVE_COLLECTION_EVENT, syncRag)
     window.addEventListener("storage", syncRag)
@@ -233,6 +283,62 @@ export function Chat() {
     window.addEventListener("tans-agents:open-prompts", handleOpenPrompts)
     return () => window.removeEventListener("tans-agents:open-prompts", handleOpenPrompts)
   }, [])
+
+  useEffect(() => {
+    if (!error) return
+    if (!smartRetryEnabled || effectiveAbEnabled) return
+    if (retryStateRef.current.inFlight || retryStateRef.current.attempts >= 2) return
+    if (!isRetryableError(error.message)) return
+
+    const marker = `${error.message}:${retryStateRef.current.attempts}`
+    if (lastErrorRef.current === marker) return
+    lastErrorRef.current = marker
+
+    const order = getProviderFallbackOrder(autoProfile)
+    const currentIndex = order.indexOf(provider)
+    const fallbackOrder =
+      currentIndex >= 0
+        ? [...order.slice(currentIndex + 1), ...order.slice(0, currentIndex)]
+        : order
+    const nextProvider = fallbackOrder.find((candidate) => candidate !== provider) as ProviderKey | undefined
+    if (!nextProvider) return
+
+    const nextModel = PROVIDERS[nextProvider]?.default ?? model
+    retryStateRef.current = {
+      attempts: retryStateRef.current.attempts + 1,
+      inFlight: true,
+    }
+    setRetryHint(`Smart Retry: chuyển sang ${nextProvider}/${nextModel}`)
+    handleProviderChange(nextProvider, nextModel)
+
+    void reload({
+      body: {
+        provider: nextProvider,
+        model: nextModel,
+        userKeys,
+        enabledTools,
+        autoProfile,
+        workspacePackId,
+        smartRetry: smartRetryEnabled,
+        retryAttempt: retryStateRef.current.attempts,
+        personaSystemPrompt,
+      },
+    } as any).finally(() => {
+      retryStateRef.current.inFlight = false
+    })
+  }, [
+    autoProfile,
+    effectiveAbEnabled,
+    enabledTools,
+    error,
+    model,
+    personaSystemPrompt,
+    provider,
+    reload,
+    smartRetryEnabled,
+    userKeys,
+    workspacePackId,
+  ])
 
   const displayMessages = useMemo(
     () => messages.map((message, index) => ({ message, index })).filter(({ message }) => message.role !== "system"),
@@ -289,11 +395,14 @@ export function Chat() {
         provider,
         model,
         persona,
+        autoProfile,
+        workspacePackId,
+        smartRetry: smartRetryEnabled,
       } as any)
     }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, sessionId, provider, model, persona])
+  }, [messages, sessionId, provider, model, persona, autoProfile, workspacePackId, smartRetryEnabled])
 
   // Remember the active sessionId so a reload restores the same conversation.
   useEffect(() => {
@@ -326,6 +435,8 @@ export function Chat() {
       if (saved.provider) setProvider(saved.provider as ProviderKey)
       if (saved.model) setModel(saved.model)
       if ((saved as any).persona) setPersona((saved as any).persona as PersonaId)
+      if (saved.autoProfile) setAutoProfile(saved.autoProfile)
+      if (saved.workspacePackId) setWorkspacePackId(saved.workspacePackId)
     }
     hydratedFromHistoryRef.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,12 +469,38 @@ export function Chat() {
 
     const pending = pendingFirstMessage
     setPendingFirstMessage(null)
-    void append({
-      role: "user",
-      content: pending.content,
-      experimental_attachments: pending.attachments,
-    } as any)
-  }, [append, messages, pendingFirstMessage])
+    void append(
+      {
+        role: "user",
+        content: pending.content,
+        experimental_attachments: pending.attachments,
+      } as any,
+      {
+        body: {
+          provider,
+          model,
+          userKeys,
+          enabledTools,
+          autoProfile,
+          workspacePackId,
+          smartRetry: smartRetryEnabled,
+          personaSystemPrompt,
+        },
+      } as any
+    )
+  }, [
+    append,
+    autoProfile,
+    enabledTools,
+    messages,
+    model,
+    pendingFirstMessage,
+    personaSystemPrompt,
+    provider,
+    smartRetryEnabled,
+    userKeys,
+    workspacePackId,
+  ])
 
   // Token + cost estimate
   const tokenStats = useMemo(() => {
@@ -378,7 +515,7 @@ export function Chat() {
     return { input, output, cost }
   }, [messages, model])
 
-  function handleProviderChange(p: ProviderKey, m: string) {
+  const handleProviderChange = useCallback((p: ProviderKey, m: string) => {
     setProvider(p)
     setModel(m)
     if (typeof window !== "undefined") {
@@ -386,7 +523,22 @@ export function Chat() {
         window.localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify({ provider: p, model: m }))
       } catch {}
     }
-  }
+  }, [])
+
+  const handleWorkspacePackChange = useCallback(
+    (nextPackId: string) => {
+      const pack = getWorkspacePack(nextPackId)
+      setWorkspacePackId(pack.id)
+      setAutoProfile(pack.autoProfile)
+      setPersona(pack.persona)
+      if (sessionId) history.setEnabledTools(sessionId, pack.enabledTools)
+      if (!memory.about.trim() && pack.memoryAbout) setAbout(pack.memoryAbout)
+      for (const fact of pack.memoryFacts ?? []) {
+        addFact(fact, { confidence: 0.65 })
+      }
+    },
+    [addFact, history, memory.about, sessionId, setAbout]
+  )
 
   const startAbComparison = useCallback(
     (nextMessages: any[]) => {
@@ -420,7 +572,16 @@ export function Chat() {
         messages: nextMessages,
         modelA: abMode.modelA,
         modelB: abMode.modelB,
-        body: { userKeys, enabledTools, persona, memory: { about: memory.about, facts: memory.facts }, personaSystemPrompt },
+        body: {
+          userKeys,
+          enabledTools,
+          autoProfile,
+          workspacePackId,
+          smartRetry: smartRetryEnabled,
+          persona,
+          memory: { about: memoryWithWorkspace.about, facts: memoryWithWorkspace.facts },
+          personaSystemPrompt,
+        },
         callbacks: {
           onChunkA: (chunk) => patchAb((current) => ({ ...current, a: { ...current.a, content: current.a.content + chunk } })),
           onChunkB: (chunk) => patchAb((current) => ({ ...current, b: { ...current.b, content: current.b.content + chunk } })),
@@ -447,11 +608,28 @@ export function Chat() {
         if (abStreamRef.current === handle) abStreamRef.current = null
       })
     },
-    [abMode.modelA, abMode.modelB, enabledTools, memory.about, memory.facts, model, persona, personaSystemPrompt, provider, userKeys]
+    [
+      abMode.modelA,
+      abMode.modelB,
+      autoProfile,
+      enabledTools,
+      memoryWithWorkspace.about,
+      memoryWithWorkspace.facts,
+      model,
+      persona,
+      personaSystemPrompt,
+      provider,
+      smartRetryEnabled,
+      userKeys,
+      workspacePackId,
+    ]
   )
 
   const sendUserMessage = useCallback(
     async (userMessage: PendingMessage) => {
+      retryStateRef.current = { attempts: 0, inFlight: false }
+      setRetryHint(null)
+      lastErrorRef.current = ""
       setInput("")
       setAttachedFiles([])
 
@@ -480,13 +658,43 @@ export function Chat() {
         return
       }
 
-      await append({
-        role: "user",
-        content: userMessage.content,
-        experimental_attachments: userMessage.attachments,
-      } as any)
+      await append(
+        {
+          role: "user",
+          content: userMessage.content,
+          experimental_attachments: userMessage.attachments,
+        } as any,
+        {
+          body: {
+            provider,
+            model,
+            userKeys,
+            enabledTools,
+            autoProfile,
+            workspacePackId,
+            smartRetry: smartRetryEnabled,
+            personaSystemPrompt,
+          },
+        } as any
+      )
     },
-    [append, effectiveAbEnabled, hasVisibleMessages, messages, personaSystemPrompt, setInput, setMessages, startAbComparison]
+    [
+      append,
+      autoProfile,
+      effectiveAbEnabled,
+      enabledTools,
+      hasVisibleMessages,
+      messages,
+      model,
+      personaSystemPrompt,
+      provider,
+      setInput,
+      setMessages,
+      smartRetryEnabled,
+      startAbComparison,
+      userKeys,
+      workspacePackId,
+    ]
   )
 
   useEffect(() => {
@@ -549,6 +757,10 @@ export function Chat() {
       setProvider(s.provider as ProviderKey)
       setModel(s.model)
       setPersona(((s as any).persona as PersonaId) ?? "default")
+      setAutoProfile(s.autoProfile ?? DEFAULT_AUTO_ROUTE_PROFILE)
+      setWorkspacePackId(s.workspacePackId ?? DEFAULT_WORKSPACE_PACK_ID)
+      setRetryHint(null)
+      retryStateRef.current = { attempts: 0, inFlight: false }
     },
     [history, setMessages]
   )
@@ -572,6 +784,9 @@ export function Chat() {
         provider,
         model,
         persona,
+        autoProfile,
+        workspacePackId,
+        smartRetry: smartRetryEnabled,
         parentId: sessionId,
         tags: currentSession?.tags,
         enabledTools: currentSession?.enabledTools,
@@ -591,7 +806,24 @@ export function Chat() {
         } as any)
       }, 0)
     },
-    [append, currentSession?.enabledTools, currentSession?.tags, history, isLoading, messages, model, persona, provider, sessionId, setInput, setMessages, stop]
+    [
+      append,
+      autoProfile,
+      currentSession?.enabledTools,
+      currentSession?.tags,
+      history,
+      isLoading,
+      messages,
+      model,
+      persona,
+      provider,
+      sessionId,
+      setInput,
+      setMessages,
+      smartRetryEnabled,
+      stop,
+      workspacePackId,
+    ]
   )
 
   const handleBranchFromMessage = useCallback(
@@ -607,6 +839,9 @@ export function Chat() {
         provider,
         model,
         persona,
+        autoProfile,
+        workspacePackId,
+        smartRetry: smartRetryEnabled,
         parentId: sessionId,
         tags: currentSession?.tags,
         enabledTools: currentSession?.enabledTools,
@@ -618,7 +853,23 @@ export function Chat() {
       setSessionId(branchId)
       setMessages(branchMessages as any)
     },
-    [currentSession?.enabledTools, currentSession?.tags, history, isLoading, messages, model, persona, provider, sessionId, setInput, setMessages, stop]
+    [
+      autoProfile,
+      currentSession?.enabledTools,
+      currentSession?.tags,
+      history,
+      isLoading,
+      messages,
+      model,
+      persona,
+      provider,
+      sessionId,
+      setInput,
+      setMessages,
+      smartRetryEnabled,
+      stop,
+      workspacePackId,
+    ]
   )
 
   const handleDeleteSession = useCallback(
@@ -871,8 +1122,12 @@ export function Chat() {
           provider={provider}
           model={model}
           persona={persona}
+          autoProfile={autoProfile}
+          workspacePackId={workspacePackId}
           onChange={handleProviderChange}
           onPersonaChange={setPersona}
+          onAutoProfileChange={setAutoProfile}
+          onWorkspacePackChange={handleWorkspacePackChange}
           onNewChat={handleNewChat}
           canNewChat={hasVisibleMessages && !isLoading && !isAbLoading}
           onOpenMenu={() => setSidebarOpen(true)}
@@ -896,6 +1151,11 @@ export function Chat() {
               userKeys={userKeys}
             />
           </div>
+          {retryHint && (
+            <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              {retryHint}
+            </div>
+          )}
           {hasVisibleMessages && (
             <div className="sticky top-3 z-20 mt-3 flex justify-end">
               <button
