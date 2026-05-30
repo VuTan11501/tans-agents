@@ -25,6 +25,11 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
 }
 
+function prefersReducedMotion() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
 async function streamMeetingAI(messages: MeetingMessage[], onDelta: (text: string) => void) {
   const res = await fetch("/api/chat-sse", {
     method: "POST",
@@ -104,7 +109,7 @@ export default function MeetingRoomPage() {
   }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    bottomRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "end" })
   }, [messages, aiBusy])
 
   const mergeLocal = useCallback((incoming: MeetingMessage[]) => {

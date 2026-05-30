@@ -35,10 +35,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="vi" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans antialiased">
         <PWARegister />
+        <a
+          href="#app-main-content"
+          className="sr-only fixed left-3 top-3 z-[120] rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          Bỏ qua tới nội dung chính
+        </a>
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <TooltipProvider delayDuration={300}>
-              {children}
+              <div id="app-main-content" className="contents">
+                {children}
+              </div>
               <VoiceMode />
               <CommandPalette />
               <Toaster position="bottom-center" theme="system" richColors closeButton />

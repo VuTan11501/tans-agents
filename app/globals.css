@@ -9,10 +9,13 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     -ms-content-zooming: none;
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable both-edges;
   }
   body {
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
+    padding-bottom: env(safe-area-inset-bottom);
   }
   input,
   textarea,
@@ -25,6 +28,21 @@
     select {
       font-size: inherit;
     }
+  }
+
+  :where(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="focus:"]):not([class*="focus-visible:"]) {
+    border-color: hsl(var(--input));
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  }
+  :where(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="focus:"]):not([class*="focus-visible:"]):hover {
+    border-color: hsl(var(--ring) / 0.35);
+  }
+  :where(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="focus:"]):not([class*="focus-visible:"]):focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.7);
+    outline-offset: 2px;
+  }
+  :where(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="focus:"]):not([class*="focus-visible:"])[aria-invalid="true"] {
+    border-color: hsl(var(--destructive));
   }
 }
 
@@ -89,6 +107,9 @@
   inset: 0;
   display: flex;
   flex-direction: column;
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 /* Subtle dot-grid background pattern */
@@ -258,4 +279,22 @@
 }
 [data-density="comfortable"] [data-chat-messages] > * + * {
   margin-top: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .send-glow:hover:not(:disabled) {
+    box-shadow: none;
+    transform: none;
+  }
 }
